@@ -49,15 +49,17 @@ Cible de répartition : ~40 % SOLIDE/GAME_CHANGER, ~40 % MOYEN, ~20 % BRUIT. Si 
 
 # Format de sortie
 
-Réponds UNIQUEMENT en JSON valide, sans markdown ni texte autour :
+Réponds UNIQUEMENT en JSON valide, sans markdown ni texte autour.
+Les champs en tableaux = des BULLETS COURTS (max ~15 mots chacun, une idée par bullet). JAMAIS de phrase longue dans une bullet.
 
 {
-  "resume": "4-6 phrases : c'est quoi exactement (outil/thèse/news), comment ça marche concrètement, ce qui le distingue des alternatives existantes. Niveau expert, va au fond, ne résume pas à vide",
+  "resume": ["4-6 bullets : c'est quoi exactement, comment ça marche, ce qui le distingue"],
   "verdict": "GAME_CHANGER" | "SOLIDE" | "MOYEN" | "BRUIT",
   "nouveaute": "oui" | "non" | "vieux",
-  "contexte_nouveaute": "1-2 phrases : fraîcheur réelle d'après les résultats web, avec dates si disponibles",
-  "raison": "2-3 phrases en ton pote cash : pourquoi ça mérite (ou pas) sa place dans sa veille, avec les arguments précis",
-  "limites": "1-2 phrases : les pièges, limites, claims invérifiables, ou questions ouvertes à creuser",
+  "contexte_nouveaute": "1 phrase courte avec date si dispo",
+  "raison": ["2-3 bullets en pote cash : pourquoi ça mérite (ou pas) sa veille"],
+  "limites": ["1-2 bullets : pièges, claims invérifiables, questions ouvertes"],
+  "suggestions": ["3 propositions de creusage liées AU CONTENU précis de ce tweet : un angle technique à approfondir, une alternative à comparer, un parallèle ou cas d'usage. Formulées comme des questions/action courtes"],
   "sources": ["url1", "url2"]
 }
 

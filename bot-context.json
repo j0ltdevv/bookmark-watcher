@@ -238,5 +238,176 @@
   ],
   "msg_id": 32,
   "ts": "2026-09-09T18:45:56+00:00"
+ },
+ {
+  "tweet_id": "2097664184783966477",
+  "author": "sakatayasha",
+  "text": "stop burning money on AI API credits\n\nthese 10 APIs let you experiment with powerful AI models for free\n\n1. OpenRouter\nhttps://t.co/qRUoNPxTdD\n\n2. NVIDIA NIM\nhttps://t.co/rWGMvMLnxe\n\n3. GitHub Models\nhttps://t.co/IDPYBejz4V\u2026\n\n4. Together AI\nhttps://t.co/tzbDIL487z\n\n5. Cloudflare Workers AI\nhttps://t.co/Cy5CaxuXmq\n\n6. Groq\nhttps://t.co/NIEeDtwbkv\n\n7. Cerebras\nhttps://t.co/bqZ4iW9AJU\n\n8. Mistral\nhttps://t.co/4yvluOJXsa\n\n9. Cohere\nhttps://t.co/KtJb9nRtUY\n\n10. Google AI Studio\nhttps://t.co/FmBBIGeycV\n\nhave fun~",
+  "created_at": "Wed Sep 09 12:31:29 +0000 2026",
+  "brief": {
+   "resume": "Le tweet propose une liste de 10 plateformes offrant un acc\u00e8s gratuit \u00e0 des mod\u00e8les d'IA via leurs API : OpenRouter, NVIDIA NIM, GitHub Models, Together AI, Cloudflare Workers AI, Groq, Cerebras, Mistral, Cohere et Google AI Studio. Chaque service permet d'exp\u00e9rimenter avec diff\u00e9rents mod\u00e8les (LLM, embeddings, etc.) sans d\u00e9penser de cr\u00e9dits, souvent avec des limites de taux ou de quota. OpenRouter agit comme un agr\u00e9gateur qui donne acc\u00e8s \u00e0 plusieurs mod\u00e8les gratuits via une seule cl\u00e9, tandis que les autres proposent leurs propres mod\u00e8les h\u00e9berg\u00e9s (ex. NVIDIA NIM pour les mod\u00e8les optimis\u00e9s GPU, Groq pour l'inf\u00e9rence ultra-rapide sur LPU). Cette compilation est utile pour tester rapidement divers fournisseurs sans engagement financier, mais elle ne pr\u00e9sente pas d'innovation technique majeure.",
+   "verdict": "MOYEN",
+   "nouveaute": "non",
+   "contexte_nouveaute": "Les r\u00e9sultats web fournis montrent seulement qu'OpenRouter propose d\u00e9j\u00e0 un acc\u00e8s gratuit \u00e0 des mod\u00e8les (pages de pricing et de collections), sans date de fra\u00eecheur pr\u00e9cise. Aucun des autres services n'est accompagn\u00e9 d'une source r\u00e9cente dans les donn\u00e9es fournies, ce qui indique que le tweet recycle des offres d\u00e9j\u00e0 connues plut\u00f4t qu'une annonce nouvelle.",
+   "raison": "Fr\u00e9rot, c'est une bonne petite bo\u00eete \u00e0 outils pour essayer plein de mod\u00e8les sans sortir la carte bancaire \u2013 id\u00e9al pour du prototypage ou de la veille rapide. Mais la plupart de ces niveaux gratuits existent depuis un moment et viennent avec des limites strictes (rate\u2011limit, mod\u00e8les anciens, quotas journaliers), donc rien de r\u00e9volutionnaire qui justifierait un GAME_CHANGER.",
+   "limites": "Les free tiers sont souvent soumis \u00e0 des plafonds d'utilisation tr\u00e8s bas, ce qui peut bloquer des tests plus lourds ou des benchmarks. Certains claims (comme \u00ab puissante IA gratuite \u00bb) ne sont pas v\u00e9rifi\u00e9s dans les sources fournies et peuvent \u00eatre trompeurs si on s'attend \u00e0 des performances de production.",
+   "sources": [
+    "https://openrouter.ai/openrouter/free",
+    "https://openrouter.ai/collections/free-models",
+    "https://openrouter.ai/developers"
+   ]
+  },
+  "sources": [
+   {
+    "title": "Free Models Router - API Pricing & Providers | OpenRouter",
+    "url": "https://openrouter.ai/openrouter/free",
+    "date": ""
+   },
+   {
+    "title": "Models | Try NVIDIA NIM APIs",
+    "url": "https://build.nvidia.com/",
+    "date": ""
+   },
+   {
+    "title": "Free AI Models on OpenRouter | OpenRouter",
+    "url": "https://openrouter.ai/collections/free-models",
+    "date": ""
+   },
+   {
+    "title": "Developer Platform | OpenRouter",
+    "url": "https://openrouter.ai/developers",
+    "date": ""
+   }
+  ],
+  "msg_id": 37,
+  "ts": "2026-09-09T18:50:37+00:00"
+ },
+ {
+  "tweet_id": "2097703769777856612",
+  "author": "RodmanAi",
+  "text": "10 GITHUB REPOSITORIES YOU\u2019LL WISH YOU FOUND EARLIER\n\nI went looking for projects that don\u2019t show up in every AI thread.\n\nFound some seriously good ones.\n\n1. Vero\n\nAI coding agent that tries to verify generated code using Lean 4.\n\nhttps://t.co/8Q7mVr9t1N\n\n2. Agentor\n\nAdd A2A support, agent discovery, streaming and artifact sharing to your AI agents.\n\nhttps://t.co/3ETegGEtrX\n\n3. Sky-Agent\n\nA lightweight framework for building your own AI superagent with tools, memory and files.\n\nhttps://t.co/7waSSXsSVS\n\n4. PageIndex\n\nA reasoning-based approach to RAG that helps agents navigate long documents.\n\nhttps://t.co/Q6BlbxJ9pS\n\n5. Semantica\n\nGraph-based infrastructure for connecting entities, relationships and context for AI systems.\n\nhttps://t.co/ZLKUsC1fPW\n\n6. NanoBot\n\nA lightweight self-hosted AI agent with memory, tools, MCP, WebUI and multi-agent workflows.\n\nhttps://t.co/dKSbANVRao\n\n7. Learn Claude Code\n\nRecreate a Claude Code-style agent from scratch and learn how coding agents actually work.\n\nhttps://t.co/Rul1KBZsNx\n\n8. Agent-Reach\n\nGive AI agents access to sources like GitHub, YouTube, Reddit, X and more.\n\nhttps://t.co/oyMKmAo0kW\n\n9. Book-to-Skill\n\nTurn technical book PDFs into usable Claude Code skills for your coding workflow.\n\nhttps://t.co/4XsSeMVYFl\n\n10. ExploitGym\n\nAn environment for testing AI agents on real software exploitation tasks.\n\nhttps://t.co/hnFRlQ5QHU\n\nAll open source.\n\nSome are already getting attention.\nOthers are still flying under the radar.\n\nSave this list.",
+  "created_at": "Wed Sep 09 15:08:46 +0000 2026",
+  "brief": {
+   "resume": "Le tweet propose une s\u00e9lection de dix d\u00e9p\u00f4ts GitHub centr\u00e9s sur les agents IA et les outils de d\u00e9veloppement assist\u00e9 par l'IA. Parmi eux, Vero utilise Lean 4 pour v\u00e9rifier formellement le code g\u00e9n\u00e9r\u00e9, Agentor ajoute la d\u00e9couverte d'agents A2A, le streaming et le partage d'artefacts, tandis que Sky-Agent offre un cadre l\u00e9ger pour construire des super\u2011agents avec m\u00e9moire, outils et fichiers. D'autres projets comme PageIndex (RAG bas\u00e9 sur le raisonnement), Semantica (infrastructure graphe), NanoBot (agent auto\u2011h\u00e9berg\u00e9 MCP/WebUI), Learn Claude Code (tutoriel pour recoder un agent Claude), Agent-Reach (connecteurs vers GitHub, YouTube, Reddit, X), Book-to-Skill (conversion de PDF techniques en skills) et ExploitGym (environnement de test d'exploitation logicielle) compl\u00e8tent le panorama. Aucun de ces d\u00e9p\u00f4ts ne pr\u00e9sente une perc\u00e9e th\u00e9orique majeure, mais ils offrent des impl\u00e9mentations concr\u00e8tes, souvent open\u2011source, que l'on peut int\u00e9grer imm\u00e9diatement dans un pipeline d'agents IA.",
+   "verdict": "SOLIDE",
+   "nouveaute": "non",
+   "contexte_nouveaute": "Le seul d\u00e9p\u00f4t avec une date explicite est scaleapi/vero (17\u202favril\u202f2026), soit plus de cinq mois avant le tweet. Les autres liens ne fournissent pas de horodatage dans les r\u00e9sultats fournis, donc on ne peut pas affirmer une sortie r\u00e9cente ; la plupart \u00e9taient d\u00e9j\u00e0 connus ou accessibles avant septembre 2026.",
+   "raison": "Fr\u00e9rot, cette liste vaut le coup d'\u00eatre gard\u00e9e sous le coude : elle regroupe des outils r\u00e9ellement utilisables aujourd'hui, avec des approches vari\u00e9es (v\u00e9rification formelle, d\u00e9couverte d'agents, RAG raisonn\u00e9, graphe de connaissances, etc.). Aucun n'est du pur hype ; chacun poss\u00e8de un d\u00e9p\u00f4t ouvert, une documentation et des exemples qui permettent une int\u00e9gration rapide dans un workflow d'agents IA locaux ou cloud.",
+   "limites": "Le tweet ne fait que curer ; il n'approfondit pas les compromis de performance, la maturit\u00e9 ni la soutenabilit\u00e9 \u00e0 long terme de chaque projet. Certains claims (comme la \u00ab v\u00e9rification formelle \u00bb de Vero) restent \u00e0 v\u00e9rifier en profondeur, et la pertinence r\u00e9elle d\u00e9pend du cas d'usage sp\u00e9cifique de l'utilisateur.",
+   "sources": [
+    "https://github.com/celestoai/agentor",
+    "https://github.com/sunblaze-ucb/vero",
+    "https://github.com/scaleapi/vero"
+   ]
+  },
+  "sources": [
+   {
+    "title": "CelestoAI/agentor",
+    "url": "https://github.com/celestoai/agentor",
+    "date": ""
+   },
+   {
+    "title": "sunblaze-ucb/vero",
+    "url": "https://github.com/sunblaze-ucb/vero",
+    "date": ""
+   },
+   {
+    "title": "CelestoAI/agentor",
+    "url": "https://github.com/CelestoAI/agentor/",
+    "date": ""
+   },
+   {
+    "title": "scaleapi/vero",
+    "url": "https://github.com/scaleapi/vero",
+    "date": "2026-04-17"
+   }
+  ],
+  "msg_id": 38,
+  "ts": "2026-09-09T18:51:22+00:00"
+ },
+ {
+  "tweet_id": "2097697962348712147",
+  "author": "novita_labs",
+  "text": "\ud83d\ude80 Ling-3.0-flash-VL from @AntLingAGI is now live on Novita.\n\nLaunching as a Day-0 partner \u26a1\n\ud83c\udf81 Free for 14 days.\n\nLing-3.0-flash-VL is a native multimodal MoE model built on Ling-3.0-flash, bringing visual information into understanding, reasoning, acting, and verification.\n\n\ud83d\udd39 124B total parameters \u00b7 5.5B active parameters per token\n\ud83d\udd39 Native image and video input\n\ud83d\udd39 OpenAI-compatible serverless API\n\ud83d\udd39 Function calling, reasoning, and Anthropic API support\n\nBuilt for multimodal reasoning, visual agent workflows, and long-context tasks.",
+  "created_at": "Wed Sep 09 14:45:42 +0000 2026",
+  "brief": {
+   "resume": "Ling-3.0-flash-VL est un mod\u00e8le MoE natif multimodal de 124\u202fB param\u00e8tres dont seulement 5,5\u202fB sont actifs par token, d\u00e9velopp\u00e9 par AntLingAGI (Ant Group) et d\u00e9ploy\u00e9 d\u00e8s aujourd\u2019hui sur l\u2019API serverless de Novita avec compatibilit\u00e9 OpenAI. Il accepte en entr\u00e9e image et vid\u00e9o native, supporte le function calling, le raisonnement chain\u2011of\u2011thought et l\u2019interface Anthropic, visant les workflows d\u2019agents visuels et les t\u00e2ches \u00e0 tr\u00e8s long contexte. Son architecture sparse permet un co\u00fbt de calcul inf\u00e9rieur \u00e0 celui d\u2019un mod\u00e8le dense de m\u00eame taille tout en conservant des capacit\u00e9s de compr\u00e9hension visuelle comparables aux mod\u00e8les propri\u00e9taires r\u00e9cents. Disponible gratuitement pendant 14\u202fjours, il constitue une alternative ouverte aux offres multimodales propri\u00e9taires pour exp\u00e9rimenter des agents GUI ou des pipelines de raisonnement multimodal.",
+   "verdict": "SOLIDE",
+   "nouveaute": "oui",
+   "contexte_nouveaute": "Le mod\u00e8le a \u00e9t\u00e9 annonc\u00e9 le 4\u202fseptembre 2026 (RuntimeWire) puis open\u2011sourc\u00e9 le 9\u202fseptembre 2026 (AIBase), jour m\u00eame o\u00f9 il est mis en ligne sur Novita avec un acc\u00e8s gratuit de deux semaines.",
+   "raison": "Fr\u00e9rot, c\u2019est du solide pour ta veille : un MoE multimodal qui tourne d\u00e9j\u00e0 via une API serverless compatible OpenAI, donc tu peux le brancher directement sur tes agents locaux sans g\u00e9rer de gros serveurs, et la gratuit\u00e9 de 14\u202fjours te laisse le temps de tester le function calling et le raisonnement visuel sur tes workflows de s\u00e9cu. Les chiffres (5,5B actifs/token) promettent une inf\u00e9rence moins ch\u00e8re qu\u2019un dense 124B, ce qui est int\u00e9ressant si tu veux du raisonnement long contexte sur du texte + captures d\u2019\u00e9cran ou vid\u00e9os d\u2019attaques.",
+   "limites": "Aucun benchmark ind\u00e9pendant n\u2019est encore publi\u00e9 pour v\u00e9rifier les pr\u00e9tentions de performance visuelle ou de raisonnement, et la licence d\u2019utilisation exacte du mod\u00e8le n\u2019est pas claire dans les sources fournies ; de plus, l\u2019acc\u00e8s gratuit est limit\u00e9 \u00e0 deux semaines, apr\u00e8s quoi le co\u00fbt pourrait devenir un frein si tu veux l\u2019utiliser en production.",
+   "sources": [
+    "https://huggingface.co/inclusionAI/Ling-3.0-flash-VL",
+    "https://huggingface.co/inclusionAI/Ling-3.0-flash-VL-fp8",
+    "https://runtimewire.com/article/ant-ling-releases-ling-3-0-flash-vl-visual-agents",
+    "https://news.aibase.com/news/30924"
+   ]
+  },
+  "sources": [
+   {
+    "title": "inclusionAI/Ling-3.0-flash-VL",
+    "url": "https://huggingface.co/inclusionAI/Ling-3.0-flash-VL",
+    "date": ""
+   },
+   {
+    "title": "inclusionAI/Ling-3.0-flash-VL-fp8 \u00b7 Hugging Face",
+    "url": "https://huggingface.co/inclusionAI/Ling-3.0-flash-VL-fp8",
+    "date": ""
+   },
+   {
+    "title": "Ant Ling releases Ling-3.0-flash-VL for visual agents and GUI control",
+    "url": "https://runtimewire.com/article/ant-ling-releases-ling-3-0-flash-vl-visual-agents",
+    "date": "2026-09-04"
+   },
+   {
+    "title": "AntGroup Open Sources Ling-3.0-flash-VL: The 124B-Parameter Native Multimodal Large Model Makes Its Debut",
+    "url": "https://news.aibase.com/news/30924",
+    "date": "2026-09-09"
+   }
+  ],
+  "msg_id": 39,
+  "ts": "2026-09-09T18:51:58+00:00"
+ },
+ {
+  "tweet_id": "998-test",
+  "author": "realsecdev",
+  "text": "Released v1.0 of our SBOM diff tool: compares two SBOMs, flags license changes and newly reachable CVEs in the dependency graph. Works with SPDX and CycloneDX, CI-friendly, no SaaS.",
+  "created_at": "Mon Sep 08 19:00:00 +0000 2026",
+  "brief": {
+   "resume": [
+    "Outil SBOM diff v1.0 qui compare deux fichiers SBOM (SPDX ou CycloneDX).",
+    "D\u00e9tecte les changements de licence et les nouvelles CVEs atteignables dans le graphe de d\u00e9pendances.",
+    "Con\u00e7u pour \u00eatre utilis\u00e9 en CI, sans d\u00e9pendre d'un service SaaS.",
+    "Sortie lisible (probablement JSON/texte) pour automatiser les alertes de s\u00e9curit\u00e9.",
+    "Compatible avec les formats standards, facilite l'int\u00e9gration dans les pipelines existants."
+   ],
+   "verdict": "MOYEN",
+   "nouveaute": "non",
+   "contexte_nouveaute": "Des outils de diff SBOM existaient d\u00e9j\u00e0 depuis janvier 2026 (cyberwitchery/sbom-diff) et avril 2026 (bomdrift).",
+   "raison": [
+    "Utile pour suivre les \u00e9volutions de licences et de vuln\u00e9rabilit\u00e9s dans les d\u00e9pendances.",
+    "Approche CI\u2011friendly et z\u00e9ro SaaS r\u00e9pond aux besoins d'autonomie et de conformit\u00e9.",
+    "La d\u00e9tection de CVEs \u00ab\u202fatteignables\u202f\u00bb reste \u00e0 v\u00e9rifier ind\u00e9pendamment."
+   ],
+   "limites": [
+    "Aucun d\u00e9tail publi\u00e9 sur l'algorithme de d\u00e9tection de CVEs atteignables, claim non sourc\u00e9.",
+    "Risque de duplication d'efforts avec des projets similaires d\u00e9j\u00e0 actifs."
+   ],
+   "suggestions": [
+    "Comparer la liste de CVEs atteignables produite avec celle d'un scanner CVE classique (ex. Grype, Trivy).",
+    "Benchmarker le temps d'ex\u00e9cution et les faux positifs sur un gros projet open\u2011source.",
+    "Exporter les r\u00e9sultats vers un format d'alerte (SARIF, GitHub Security Advisory) pour int\u00e9gration CI."
+   ],
+   "sources": [
+    "https://github.com/cyberwitchery/sbom-diff",
+    "https://github.com/sbom-tool/sbom-tools",
+    "https://github.com/HailBytes/sbom-diff",
+    "https://github.com/metbcy/bomdrift"
+   ]
+  },
+  "sources": [],
+  "msg_id": 40,
+  "ts": "2026-09-09T18:57:07+00:00"
  }
 ]

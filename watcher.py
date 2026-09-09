@@ -369,6 +369,14 @@ VERDICT_LABEL = {
     "BRUIT": "🗑️ BRUIT",
 }
 
+def _bullets(value, icon="•") -> list[str]:
+    """Normalise un champ du brief (str ou list) en liste de bullets."""
+    if isinstance(value, list):
+        return [f"  {icon} {str(v).strip()}" for v in value if str(v).strip()]
+    if isinstance(value, str) and value.strip():
+        return [f"  {icon} {value.strip()}"]
+    return []
+
 def send_telegram(tweet: dict, brief: dict, exa_results: list[dict] | None = None) -> int | None:
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("[telegram] token/chat_id manquants — message non envoyé")
@@ -377,31 +385,54 @@ def send_telegram(tweet: dict, brief: dict, exa_results: list[dict] | None = Non
     url = f"https://x.com/{author}/status/{tweet['tweet_id']}"
     verdict = VERDICT_LABEL.get(brief.get("verdict", ""), "❓ " + str(brief.get("verdict", "?")))
     esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    excerpt = esc(tweet["text"][:300])
+    excerpt = esc(tweet["text"][:280])
 
-    lines = [f"🐦 <a href=\"{url}\">Nouveau bookmark</a> — @{author}", ""]
+    lines = [f"🐦 <a href=\"{url}\">Bookmark</a> — @{author}", ""]
     if excerpt:
         lines += [f"<i>« {excerpt}… »</i>", ""]
     lines.append(f"<b>{verdict}</b>")
-    if brief.get("resume"):
-        lines += ["", esc(brief["resume"])]
+
+    resume = _bullets(brief.get("resume"))
+    if resume:
+        lines.append("\n<b>🎯 C'est quoi</b>")
+        lines += [esc(b) for b in resume]
     if brief.get("nouveaute"):
         lines.append(f"\n🆕 <b>{esc(brief['nouveaute'])}</b> — {esc(brief.get('contexte_nouveaute', ''))}")
-    if brief.get("raison"):
-        lines.append(f"\n💡 {esc(brief['raison'])}")
-    if brief.get("limites"):
-        lines.append(f"\n⚠️ {esc(brief['limites'])}")
+    raison = _bullets(brief.get("raison"))
+    if raison:
+        lines.append("\n<b>💡 Ce qu'elle vaut</b>")
+        lines += [esc(b) for b in raison]
+    limites = _bullets(brief.get("limites"))
+    if limites:
+        lines.append("\n<b>⚠️ Limites</b>")
+        lines += [esc(b) for b in limites]
     srcs = [s for s in (brief.get("sources") or []) if isinstance(s, str)][:3]
     if srcs:
         lines += ["", "Sources: " + " · ".join(f"<a href=\"{s}\">lien</a>" for s in srcs)]
-    lines += ["\n<i>Réponds à ce message pour me poser des questions 👇</i>"]
 
-    msg = "\n".join(lines)[:4000]
+    suggestions = [str(s).strip() for s in (brief.get("suggestions") or []) if str(s).strip()][:3]
+    if suggestions:
+        lines.append("\n<b>👉 Pour creuser</b>")
+        lines += [esc(f"  • {s}") for s in suggestions]
+
+    msg = "\n".join(lines)[:3900]
+
+    # boutons inline : une par suggestion + deep-dive + comparaison
+    keyboard = []
+    tid = tweet["tweet_id"][-12:]   # callback_data limité à 64 octets
+    row = [{"text": "🔬 Approfondir", "callback_data": f"deep:{tid}"},
+           {"text": "🆚 Comparer", "callback_data": f"cmp:{tid}"}]
+    keyboard.append(row)
+    for i, s in enumerate(suggestions):
+        label = s if len(s) <= 40 else s[:37] + "…"
+        keyboard.append([{"text": f"👉 {label}", "callback_data": f"sugg:{i}:{tid}"}])
+
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
             json={"chat_id": TELEGRAM_CHAT_ID, "text": msg,
-                  "parse_mode": "HTML", "disable_web_page_preview": False},
+                  "parse_mode": "HTML", "disable_web_page_preview": False,
+                  "reply_markup": {"inline_keyboard": keyboard}},
             timeout=20,
         )
         if not r.ok:
@@ -499,6 +530,57 @@ def llm_answer(question: str, records: list[dict], exa_results: list[dict] | Non
                 time.sleep((attempt + 1) * 4)
     return f"(j'ai raté la réponse : {last_err})"
 
+def find_record_by_tid(tid: str) -> dict | None:
+    for r in reversed(load_json(BOT_CONTEXT_FILE, [])):
+        if r["tweet_id"].endswith(tid):
+            return r
+    return None
+
+def handle_callback(cb: dict) -> None:
+    """Boutons inline des briefs : approfondir / comparer / suggestion."""
+    data = cb.get("data", "") or ""
+    msg = cb.get("message") or {}
+    chat_id = (msg.get("chat") or {}).get("id")
+    if str(chat_id) != str(TELEGRAM_CHAT_ID):
+        return
+    requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery",
+                  json={"callback_query_id": cb["id"]}, timeout=10)
+
+    record = MSG_TO_CONTEXT.get(msg.get("message_id")) or find_record_by_tid(data.split(":")[-1])
+    if not record:
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                      json={"chat_id": chat_id, "text": "🤔 j'ai perdu le contexte de ce brief (redémarrage ?) — renvoie-moi le lien du tweet"}, timeout=15)
+        return
+
+    requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendChatAction",
+                  json={"chat_id": chat_id, "action": "typing"}, timeout=10)
+
+    if data.startswith("deep:"):
+        question = ("Deep dive ce sujet : va chercher la source principale (repo/article), "
+                    "vérifie les claims en détail, architecture, alternatives, et ce que le tweet ne dit pas.")
+    elif data.startswith("cmp:"):
+        question = ("Fais le parallèle avec les alternatives existantes les plus pertinentes : "
+                    "forces/faiblesses de chacune, et laquelle mérite notre attention.")
+    elif data.startswith("sugg:"):
+        try:
+            idx = int(data.split(":")[1])
+            question = str((record.get("brief", {}).get("suggestions") or [])[idx])
+        except (ValueError, IndexError):
+            question = "Approfondis le point le plus intéressant de ce sujet."
+    else:
+        return
+
+    print(f"[callback] {data[:40]}")
+    web = exa_search(f"{question} {record['text'][:150]}", num_results=6, with_text=True)
+    answer = llm_answer(f"{question}\n\n(Tweet concerné de @{record['author']} : « {record['text'][:400]} »)",
+                        [record], web)
+    esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    html = lambda s: re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", esc(s))
+    requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                  json={"chat_id": chat_id, "text": html(answer)[:4000], "parse_mode": "HTML"},
+                  timeout=30)
+    print(f"[callback] réponse envoyée ({len(answer)} chars)")
+
 def telegram_listener() -> None:
     """Long polling getUpdates — répond aux questions sur les bookmarks."""
     load_context_index()
@@ -508,11 +590,15 @@ def telegram_listener() -> None:
         try:
             r = requests.get(
                 f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates",
-                params={"offset": offset, "timeout": 30, "allowed_updates": json.dumps(["message"])},
+                params={"offset": offset, "timeout": 30,
+                        "allowed_updates": json.dumps(["message", "callback_query"])},
                 timeout=40,
             )
             for u in r.json().get("result", []):
                 offset = u["update_id"] + 1
+                if "callback_query" in u:
+                    handle_callback(u["callback_query"])
+                    continue
                 msg = u.get("message") or {}
                 chat_id = (msg.get("chat") or {}).get("id")
                 text = (msg.get("text") or "").strip()
