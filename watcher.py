@@ -35,6 +35,16 @@ PROFILE_DIR = str(BASE / "x-profile")
 SESSION_FILE = BASE / "session.json"
 SEEN_FILE = BASE / "seen.json"
 SYSTEM_PROMPT_FILE = BASE / "system-prompt.md"
+MEMORY_DIR = BASE / "memory"
+
+def load_memory() -> str:
+    """Concatène tous les fichiers de mémoire structurée."""
+    if not MEMORY_DIR.exists():
+        return ""
+    parts = []
+    for f in sorted(MEMORY_DIR.glob("*.md")):
+        parts.append(f"<memoire fichier=\"{f.name}\">\n{f.read_text().strip()}\n</memoire>")
+    return "\n\n".join(parts)
 
 # Bearer public embarqué dans le client web de X (constante, pas un secret utilisateur)
 X_WEB_BEARER = (
@@ -69,8 +79,13 @@ MAX_SCROLLS_REFRESH = int(CFG.get("MAX_SCROLLS_REFRESH", "2"))
 
 def load_system_prompt() -> str:
     if SYSTEM_PROMPT_FILE.exists():
-        return SYSTEM_PROMPT_FILE.read_text()
-    return "Tu es un analyste technique. Réponds uniquement en JSON valide."
+        base = SYSTEM_PROMPT_FILE.read_text()
+    else:
+        base = "Tu es un analyste technique. Réponds uniquement en JSON valide."
+    memory = load_memory()
+    if memory:
+        base += "\n\n# TA MÉMOIRE (apprends-la, respecte-la, elle fait foi)\n\n" + memory
+    return base
 
 # ---------------------------------------------------------------- état
 
@@ -524,14 +539,27 @@ def telegram_listener() -> None:
                 reply = msg.get("reply_to_message", {})
                 reply_id = reply.get("message_id")
                 record = MSG_TO_CONTEXT.get(reply_id)
+                lower = text.lower()
+
+                if lower.startswith(("retiens", "note que", "apprends")):
+                    # mémoire : instruction durable à retenir
+                    remember_feedback(text)
+                    requests.post(
+                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                        json={"chat_id": chat_id, "text": "🧠 Retenu ! C'est dans ma mémoire, je l'appliquerai."},
+                        timeout=15,
+                    )
+                    continue
+
                 # le bot cherche LUI-MÊME sur le web avant de répondre
+                log_question(text)
                 web = exa_search(text, num_results=6, with_text=True)
                 if record:
                     answer = llm_answer(text, [record], web)
                 elif text.startswith("/"):
                     answer = ("Commandes : réponds à n'importe quel brief pour me poser une question "
                               "précise, ou écris-moi direct pour parler des derniers bookmarks. "
-                              "Vocaux OK aussi 🎙️")
+                              "Vocaux OK aussi 🎙️ — et commence par « retiens… » pour m'apprendre quelque chose.")
                 else:
                     answer = llm_answer(text, recent_context(), web)
                 esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -571,6 +599,79 @@ def download_telegram_file(file_id: str, dest: Path) -> bool:
     except Exception as e:
         print(f"[voice] téléchargement échoué: {e}")
         return False
+
+# ---------------------------------------------------------------- apprentissage
+
+FEEDBACK_FILE = MEMORY_DIR / "feedback.md"
+LEARNINGS_FILE = MEMORY_DIR / "learnings.md"
+QUESTIONS_LOG = BASE / "questions.log"
+REFLECT_EVERY = 20   # briefs traités entre deux passes d'auto-réflexion
+_reflect_counter = 0
+
+def remember_feedback(text: str) -> None:
+    """Le user a dit 'retiens …' : condense en une ligne et l'ajoute au feedback."""
+    old = FEEDBACK_FILE.read_text().strip()
+    r = requests.post(
+        f"{PROXY_URL}/v1/messages",
+        headers={"Authorization": f"Bearer {PROXY_API_KEY}", "Content-Type": "application/json"},
+        json={"model": AI_MODEL, "max_tokens": 200, "temperature": 0.2,
+              "messages": [{"role": "user", "content":
+                  f"Condense cette instruction utilisateur en UNE ligne de consigne durable, "
+                  f"impérative, au 3e personne neutre (pas de 'il faut que je'). "
+                  f"Préfixe par la date du jour {datetime.now():%Y-%m-%d}. Réponds UNIQUEMENT avec la ligne.\n\n"
+                  f"Instruction : {text}"}]},
+        timeout=60,
+    )
+    line = "\n".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text").strip()
+    if line:
+        FEEDBACK_FILE.write_text(old + f"\n- {line[:300]}\n")
+        print(f"[memory] feedback retenu: {line[:80]}")
+
+def log_question(text: str) -> None:
+    try:
+        with QUESTIONS_LOG.open("a") as f:
+            f.write(f"{datetime.now():%Y-%m-%d %H:%M}\t{text[:300]}\n")
+    except OSError:
+        pass
+
+def maybe_reflect() -> None:
+    """Tous les REFLECT_EVERY briefs : passe d'auto-réflexion → met à jour learnings.md."""
+    global _reflect_counter
+    _reflect_counter += 1
+    if _reflect_counter % REFLECT_EVERY != 0:
+        return
+    print("[memory] passe d'auto-réflexion…")
+    records = load_json(BOT_CONTEXT_FILE, [])
+    stats = []
+    for r in records[-40:]:
+        b = r.get("brief", {})
+        stats.append(f"- @{r['author']}: verdict={b.get('verdict')}, fraîcheur={b.get('nouveaute')}, "
+                     f"thème={r['text'][:100]!r}")
+    questions = ""
+    if QUESTIONS_LOG.exists():
+        qlines = QUESTIONS_LOG.read_text().strip().splitlines()[-30:]
+        questions = "\n\nDERNIÈRES QUESTIONS DU USER :\n" + "\n".join(qlines)
+    old_learnings = LEARNINGS_FILE.read_text().strip()
+    r = requests.post(
+        f"{PROXY_URL}/v1/messages",
+        headers={"Authorization": f"Bearer {PROXY_API_KEY}", "Content-Type": "application/json"},
+        json={"model": AI_MODEL, "max_tokens": 1200, "temperature": 0.3,
+              "messages": [{"role": "user", "content":
+                  f"Tu maintiens la mémoire d'apprentissage d'un bot de veille pour un utilisateur expert cyber/dev.\n\n"
+                  f"MÉMOIRE ACTUELLE :\n{old_learnings}\n\n"
+                  f"STATISTIQUES RÉCENTES (verdicts des derniers briefs) :\n" + "\n".join(stats) + questions + "\n\n"
+                  f"Mets à jour la mémoire : que remarques-tu sur ses goûts (verdicts acceptés, thèmes récurrents, "
+                  f"sujets de questions) ? Garde uniquement ce qui reste utile, retire ce qui est dépassé, "
+                  f"ajoute les nouveaux patterns concrets avec dates. Reste compact (max 40 lignes), "
+                  f"même structure de sections. Réponds UNIQUEMENT avec le nouveau contenu Markdown complet."}]},
+        timeout=180,
+    )
+    content = "\n".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text").strip()
+    if content.startswith("#") and len(content) < 6000:
+        LEARNINGS_FILE.write_text(content)
+        print("[memory] learnings.md mis à jour")
+    else:
+        print("[memory] réflexion ignorée (réponse inattendue)")
 
 # ---------------------------------------------------------------- cycle
 
@@ -615,6 +716,7 @@ def poll_cycle(notify: bool = True) -> int:
         # import + analyse faits : on régénère le vault (le 2e export du cycle
         # suivant rattrapera tags/catégories arrivés entre-temps)
         export_obsidian()
+        maybe_reflect()
     return n
 
 def mode_login() -> None:
