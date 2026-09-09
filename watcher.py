@@ -270,23 +270,27 @@ def export_obsidian() -> None:
     except Exception as e:
         print(f"[obsidian] export échoué (non bloquant): {e}")
 
-def exa_search(query: str) -> list[dict]:
+def exa_search(query: str, num_results: int = 4, with_text: bool = False) -> list[dict]:
     if not EXA_API_KEY or not query:
         return []
     try:
+        contents = {"text": {"maxCharacters": 600}} if with_text else {"text": False}
         r = requests.post(
             "https://api.exa.ai/search",
             headers={"x-api-key": EXA_API_KEY, "Content-Type": "application/json"},
-            json={"query": query[:400], "numResults": 4, "type": "auto",
-                  "contents": {"text": False}},
+            json={"query": query[:400], "numResults": num_results, "type": "auto",
+                  "contents": contents},
             timeout=20,
         )
         r.raise_for_status()
-        return [
-            {"title": x.get("title", ""), "url": x.get("url", ""),
-             "date": (x.get("publishedDate") or "")[:10]}
-            for x in r.json().get("results", [])
-        ]
+        out = []
+        for x in r.json().get("results", []):
+            item = {"title": x.get("title", ""), "url": x.get("url", ""),
+                    "date": (x.get("publishedDate") or "")[:10]}
+            if with_text:
+                item["text"] = (x.get("text") or "")[:600]
+            out.append(item)
+        return out
     except Exception as e:
         print(f"[exa] erreur (non bloquant): {e}")
         return []
@@ -428,8 +432,8 @@ def load_context_index() -> None:
 def recent_context(n: int = 8) -> list[dict]:
     return load_json(BOT_CONTEXT_FILE, [])[-n:]
 
-def llm_answer(question: str, records: list[dict]) -> str:
-    """Mode conversationnel : réponse texte libre avec le contexte des bookmarks."""
+def llm_answer(question: str, records: list[dict], exa_results: list[dict] | None = None) -> str:
+    """Mode conversationnel : réponse texte libre avec le contexte des bookmarks + recherche web."""
     ctx = []
     for r in records:
         b = r.get("brief", {})
@@ -440,8 +444,23 @@ def llm_answer(question: str, records: list[dict]) -> str:
             f"Limites notées: {b.get('limites')}\n"
             f"Sources: {json.dumps([s.get('url') for s in (r.get('sources') or []) if isinstance(s, dict)])}"
         )
-    system = load_system_prompt() + "\n\nMODE ACTUEL : conversation. L'utilisateur pose une question sur ses bookmarks récents. Réponds en texte libre (pas de JSON), en pote cash, direct et utile."
-    user = f"BOOKMARKS RÉCENTS ET LEURS BRIEFS :\n\n" + "\n\n---\n\n".join(ctx) + f"\n\nQUESTION DE L'UTILISATEUR :\n{question}"
+    web = ""
+    if exa_results:
+        lines = []
+        for s in exa_results:
+            lines.append(f"- **{s['title']}** ({s.get('date') or 'date inconnue'}) {s['url']}")
+            if s.get("text"):
+                lines.append(f"  {s['text'][:500]}")
+        web = "\n\nRÉSULTATS DE RECHERCHE WEB POUR CETTE QUESTION (frais, à utiliser en priorité) :\n" + "\n".join(lines)
+    system = load_system_prompt() + (
+        "\n\nMODE ACTUEL : conversation. L'utilisateur pose une question sur ses bookmarks récents. "
+        "Réponds en texte libre (pas de JSON), en pote cash, direct et utile. "
+        "Des résultats de recherche web frais sont fournis avec la question : UTILISE-LES. "
+        "Ne demande JAMAIS à l'utilisateur de te donner un lien ou une source — cherche et réponds."
+    )
+    user = (f"BOOKMARKS RÉCENTS ET LEURS BRIEFS :\n\n" + "\n\n---\n\n".join(ctx)
+            + web
+            + f"\n\nQUESTION DE L'UTILISATEUR :\n{question}")
     last_err = None
     for attempt in range(3):
         try:
@@ -505,13 +524,16 @@ def telegram_listener() -> None:
                 reply = msg.get("reply_to_message", {})
                 reply_id = reply.get("message_id")
                 record = MSG_TO_CONTEXT.get(reply_id)
+                # le bot cherche LUI-MÊME sur le web avant de répondre
+                web = exa_search(text, num_results=6, with_text=True)
                 if record:
-                    answer = llm_answer(text, [record])
+                    answer = llm_answer(text, [record], web)
                 elif text.startswith("/"):
                     answer = ("Commandes : réponds à n'importe quel brief pour me poser une question "
-                              "précise, ou écris-moi direct pour parler des derniers bookmarks.")
+                              "précise, ou écris-moi direct pour parler des derniers bookmarks. "
+                              "Vocaux OK aussi 🎙️")
                 else:
-                    answer = llm_answer(text, recent_context())
+                    answer = llm_answer(text, recent_context(), web)
                 esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 # **gras** du modèle -> <b> Telegram (après échappement)
                 html = lambda s: re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", esc(s))

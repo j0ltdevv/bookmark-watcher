@@ -195,5 +195,48 @@
   ],
   "msg_id": 23,
   "ts": "2026-09-09T18:30:46+00:00"
+ },
+ {
+  "tweet_id": "2097728023705309426",
+  "author": "yakkomajuri",
+  "text": "Railcode is live! (and free)\n\nWe're the secure Cloud for internal software.\n\nThink internal Vercel:\n\n- Apps always behind company auth\n- Centralized roles &amp; permissions\n- Governed connectors (users don't see API keys)\n- DB, file storage &amp; LLM gateway\n\nhttps://t.co/YGn5ngW2fw https://t.co/yY7Tqez0sA",
+  "created_at": "Wed Sep 09 16:45:09 +0000 2026",
+  "brief": {
+   "resume": "Railcode se pr\u00e9sente comme un Cloud s\u00e9curis\u00e9 destin\u00e9 aux logiciels internes d\u2019entreprise, positionn\u00e9 comme un \u00ab\u202fVercel interne\u202f\u00bb. Il h\u00e9berge des applications toujours plac\u00e9es derri\u00e8re l\u2019authentification de l\u2019entreprise, avec un syst\u00e8me centralis\u00e9 de r\u00f4les et de permissions, des connecteurs gouvern\u00e9s qui masquent les cl\u00e9s API aux utilisateurs, ainsi qu\u2019un stockage de bases de donn\u00e9es, de fichiers et une passerelle LLM int\u00e9gr\u00e9e. Le service est annonc\u00e9 comme gratuit et d\u00e9j\u00e0 en ligne depuis septembre 2026, suite \u00e0 une annonce LinkedIn de juillet 2026. Il se diff\u00e9rencie des plateformes d\u2019exp\u00e9rience d\u00e9veloppeur g\u00e9n\u00e9riques par son accent sur la gouvernance de la s\u00e9curit\u00e9 et l\u2019acc\u00e8s contr\u00f4l\u00e9 aux mod\u00e8les de langage.",
+   "verdict": "SOLIDE",
+   "nouveaute": "oui",
+   "contexte_nouveaute": "L\u2019annonce LinkedIn de Yakko M. du 29 juillet 2026 pr\u00e9sentait Railcode comme nouveau produit ; le tweet du 9 septembre 2026 confirme son lancement en ligne, ce qui le rend r\u00e9cent (quelques mois).",
+   "raison": "Pour un expert en cybers\u00e9curit\u00e9 et en internal tooling, Railcode apporte une r\u00e9ponse concr\u00e8te au probl\u00e8me de fuite de secrets et de gestion d\u2019acc\u00e8s dans les outils internes, en int\u00e9grant auth, RBAC, connecteurs s\u00e9curis\u00e9s et un gateway LLM pr\u00eats \u00e0 l\u2019emploi. Bien que l\u2019id\u00e9e d\u2019une plateforme interne type Vercel existe d\u00e9j\u00e0 (Backstage, Gitpod, etc.), la combinaison sp\u00e9cifique de ces fonctionnalit\u00e9s de s\u00e9curit\u00e9 en fait une option utilisable d\u00e8s maintenant, d\u2019o\u00f9 un verdict SOLIDE plut\u00f4t qu\u2019un GAME_CHANGER.",
+   "limites": "Le produit est encore jeune : l\u2019\u00e9cosyst\u00e8me d\u2019int\u00e9grations et les retours d\u2019utilisateurs sont limit\u00e9s, et le mod\u00e8le \u00e9conomique \u00e0 long terme (au-del\u00e0 du gratuit actuel) reste inconnu. Il faut \u00e9galement v\u00e9rifier les revendications de conformit\u00e9 et \u00e9viter un verrouillage propri\u00e9taire si l\u2019on migre vers une autre plateforme.",
+   "sources": [
+    "https://railcode.dev/",
+    "https://www.linkedin.com/posts/yakko-majuri_meet-railcode-a-secure-home-for-internal-activity-7488330657522298882-h9WY",
+    "https://railcode.skaldlabs.io/"
+   ]
+  },
+  "sources": [
+   {
+    "title": "Railcode | The secure Cloud for internal software",
+    "url": "https://railcode.dev/",
+    "date": ""
+   },
+   {
+    "title": "Secure Internal Apps and Agents with Railcode | Yakko M. posted on the ...",
+    "url": "https://www.linkedin.com/posts/yakko-majuri_meet-railcode-a-secure-home-for-internal-activity-7488330657522298882-h9WY",
+    "date": "2026-07-29"
+   },
+   {
+    "title": "Railcode \u2014 Ship Internal Tools in Hours, Not Quarters",
+    "url": "https://railcode.skaldlabs.io/",
+    "date": ""
+   },
+   {
+    "title": "Your Company Gave Everyone Claude Code. Now What?",
+    "url": "https://solofounders.com/blog/your-company-gave-everyone-claude-code-now-what/",
+    "date": "2026-08-05"
+   }
+  ],
+  "msg_id": 32,
+  "ts": "2026-09-09T18:45:56+00:00"
  }
 ]
