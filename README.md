@@ -36,8 +36,8 @@ systemctl --user enable --now bookmark-watcher.service
 
 | Variable | Défaut | Rôle |
 |---|---|---|
-| `POLL_INTERVAL` | 300 | secondes entre deux scans de x.com/i/bookmarks |
-| `MAX_PER_POLL` | 15 | nouveaux bookmarks traités par cycle (anti-rafales) |
+| `POLL_INTERVAL` | 45 | secondes entre deux scans de x.com/i/bookmarks |
+| `MAX_PER_POLL` | 10 | nouveaux bookmarks traités par cycle (anti-rafales) |
 | `AI_MODEL` | nemotron-3-super | modèle NIM pour le brief |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | — | sans eux, tout tourne mais rien n'est envoyé |
 

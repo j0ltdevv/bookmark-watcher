@@ -21,6 +21,7 @@ Pipeline par nouveau bookmark :
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 import sys
@@ -102,6 +103,8 @@ def save_json(path: Path, data) -> None:
     if path is SEEN_FILE and len(data) > 5000:
         data = dict(sorted(data.items(), key=lambda kv: kv[1])[-5000:])
     path.write_text(json.dumps(data, indent=1))
+    if path is SESSION_FILE:
+        os.chmod(path, 0o600)   # contient une session X exploitable
 
 # ---------------------------------------------------------------- session X
 
@@ -323,18 +326,32 @@ def exa_search(query: str, num_results: int = 4, with_text: bool = False, start_
         return []
 
 def _extract_json_object(text: str) -> str | None:
-    """Premier objet JSON équilibré du texte (tolère le raisonnement autour)."""
+    """Premier objet JSON équilibré du texte (tolère le raisonnement autour).
+    String-aware : les accolades entre guillemets ne comptent pas."""
     start = text.find("{")
     if start == -1:
         return None
     depth = 0
+    in_string = False
+    escaped = False
     for i in range(start, len(text)):
-        if text[i] == "{":
-            depth += 1
-        elif text[i] == "}":
-            depth -= 1
-            if depth == 0:
-                return text[start:i + 1]
+        c = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif c == '"':
+                in_string = False
+        else:
+            if c == '"':
+                in_string = True
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start:i + 1]
     return None
 
 def llm_brief(tweet: dict, exa_results: list[dict], recent: list[dict] | None = None) -> dict:
@@ -377,7 +394,13 @@ RÉSULTATS WEB EXA (contexte : fraîcheur, écho éventuel) :
             m = _extract_json_object(text)
             if not m:
                 raise ValueError(f"pas de JSON: {text[:200]}")
-            return json.loads(m)
+            brief = json.loads(m)
+            # validation du verdict : coerce vers l'échelle connue, sinon MOYEN
+            verdict = str(brief.get("verdict", "")).strip().upper().replace(" ", "_")
+            if verdict not in VERDICT_LABEL:
+                verdict = "GAME_CHANGER" if "GAME" in verdict else "MOYEN"
+            brief["verdict"] = verdict
+            return brief
         except Exception as e:
             last_err = e
             if attempt < 3:
@@ -646,11 +669,18 @@ def ask_and_send(question: str, records: list[dict], chat_id, context_note: str 
                   timeout=30)
     print(f"[ask] réponse envoyée ({len(answer)} chars)")
 
+TG_OFFSET_FILE = BASE / "tg-offset.txt"
+
 def telegram_listener() -> None:
     """Long polling getUpdates — répond aux questions sur les bookmarks."""
     load_context_index()
     offset = 0
-    print("[listener] Telegram en écoute")
+    if TG_OFFSET_FILE.exists():
+        try:
+            offset = int(TG_OFFSET_FILE.read_text().strip())
+        except ValueError:
+            offset = 0
+    print(f"[listener] Telegram en écoute (offset {offset})")
     while True:
         try:
             r = requests.get(
@@ -661,6 +691,7 @@ def telegram_listener() -> None:
             )
             for u in r.json().get("result", []):
                 offset = u["update_id"] + 1
+                TG_OFFSET_FILE.write_text(str(offset))
                 if "callback_query" in u:
                     handle_callback(u["callback_query"])
                     continue
@@ -725,7 +756,6 @@ def telegram_listener() -> None:
                                  [record], chat_id,
                                  context_note=f"Tweet concerné de @{record['author']} : « {record['text'][:400]} »")
                     continue
-                web = exa_search(text, num_results=6, with_text=True)
                 if record:
                     ask_and_send(text, [record], chat_id, search_extra=record["text"][:150])
                 elif text.startswith("/"):
@@ -1178,7 +1208,7 @@ def poll_cycle(notify: bool = True) -> int:
         tweets, err2 = poll_once(session)
         if err2:
             print(f"[poll] échec après refresh : {err2} — cycle abandonné")
-            return 0
+            return -1   # échec réel : le daemon déclenchera health(poll, False)
     print(f"[poll] {len(tweets)} tweets reçus")
     n = process_new(tweets, load_json(SEEN_FILE, {}), notify=notify)
     if n > 0 and notify:
@@ -1227,7 +1257,9 @@ def main() -> None:
         while True:
             try:
                 n = poll_cycle(notify=True)
-                health("poll", True)
+                health("poll", n >= 0)
+                if n < 0:
+                    n = 0
                 if pending_export:
                     # rattrape les tags/catégories calculés depuis l'export précédent
                     export_obsidian()

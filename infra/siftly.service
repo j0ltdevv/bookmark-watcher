@@ -5,7 +5,7 @@ Requires=nvidia-claude-proxy.service
 
 [Service]
 Type=simple
-WorkingDirectory=~/Documents/Default Project/siftly
+WorkingDirectory=%h/Documents/Default Project/siftly
 ExecStart=/usr/bin/npm run dev
 Restart=on-failure
 RestartSec=5
