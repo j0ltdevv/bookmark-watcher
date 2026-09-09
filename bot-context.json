@@ -1,0 +1,30 @@
+[
+ {
+  "tweet_id": "998",
+  "author": "realsecdev",
+  "text": "Released v1.0 of our SBOM diff tool: compares two SBOMs, flags license changes and newly reachable CVEs in the dependency graph. Works with SPDX and CycloneDX, CI-friendly, no SaaS.",
+  "created_at": "Mon Sep 08 19:00:00 +0000 2026",
+  "brief": {
+   "verdict": "SOLIDE",
+   "resume": "Outil open-source qui compare deux SBOM (SPDX ou CycloneDX), signale les changements de licence et les nouvelles CVE atteignables dans le graphe de d\u00e9pendances.",
+   "nouveaute": "oui",
+   "contexte_nouveaute": "D\u00e9p\u00f4t de septembre 2026, plus r\u00e9cent que les projets similaires de d\u00e9but 2026.",
+   "raison": "Pratique pour automatiser les v\u00e9rifications de licences et CVE en CI.",
+   "limites": "Comparaison statique, ne d\u00e9tecte pas les vuln\u00e9rabilit\u00e9s runtime."
+  },
+  "sources": [
+   {
+    "title": "sbom-tools",
+    "url": "https://github.com/sbom-tool/sbom-tools",
+    "date": "2026-09-01"
+   },
+   {
+    "title": "sbom-diff",
+    "url": "https://github.com/cyberwitchery/sbom-diff",
+    "date": "2026-04-10"
+   }
+  ],
+  "msg_id": 11,
+  "ts": "2026-09-09T17:55:45+00:00"
+ }
+]

@@ -350,10 +350,10 @@ VERDICT_LABEL = {
     "BRUIT": "🗑️ BRUIT",
 }
 
-def send_telegram(tweet: dict, brief: dict) -> None:
+def send_telegram(tweet: dict, brief: dict, exa_results: list[dict] | None = None) -> int | None:
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("[telegram] token/chat_id manquants — message non envoyé")
-        return
+        return None
     author = tweet["author_handle"] or "x"
     url = f"https://x.com/{author}/status/{tweet['tweet_id']}"
     verdict = VERDICT_LABEL.get(brief.get("verdict", ""), "❓ " + str(brief.get("verdict", "?")))
@@ -370,9 +370,12 @@ def send_telegram(tweet: dict, brief: dict) -> None:
         lines.append(f"\n🆕 <b>{esc(brief['nouveaute'])}</b> — {esc(brief.get('contexte_nouveaute', ''))}")
     if brief.get("raison"):
         lines.append(f"\n💡 {esc(brief['raison'])}")
+    if brief.get("limites"):
+        lines.append(f"\n⚠️ {esc(brief['limites'])}")
     srcs = [s for s in (brief.get("sources") or []) if isinstance(s, str)][:3]
     if srcs:
         lines += ["", "Sources: " + " · ".join(f"<a href=\"{s}\">lien</a>" for s in srcs)]
+    lines += ["\n<i>Réponds à ce message pour me poser des questions 👇</i>"]
 
     msg = "\n".join(lines)[:4000]
     try:
@@ -384,10 +387,123 @@ def send_telegram(tweet: dict, brief: dict) -> None:
         )
         if not r.ok:
             print(f"[telegram] erreur {r.status_code}: {r.text[:200]}")
-        else:
-            print(f"[telegram] envoyé ({url})")
+            return None
+        msg_id = r.json().get("result", {}).get("message_id")
+        print(f"[telegram] envoyé ({url})")
+        record_brief(tweet, brief, exa_results or [], msg_id)
+        return msg_id
     except Exception as e:
         print(f"[telegram] échec: {e}")
+        return None
+
+# ---------------------------------------------------------------- contexte conversationnel
+
+BOT_CONTEXT_FILE = BASE / "bot-context.json"
+MSG_TO_CONTEXT: dict[int, dict] = {}   # message_id -> record (reconstruit au démarrage)
+
+def record_brief(tweet: dict, brief: dict, exa_results: list[dict], msg_id: int | None) -> None:
+    """Mémorise un brief pour le mode questions/réponses."""
+    records = load_json(BOT_CONTEXT_FILE, [])
+    record = {
+        "tweet_id": tweet["tweet_id"],
+        "author": tweet["author_handle"],
+        "text": tweet["text"][:1500],
+        "created_at": tweet["created_at"],
+        "brief": brief,
+        "sources": exa_results,
+        "msg_id": msg_id,
+        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    records = [r for r in records if r["tweet_id"] != record["tweet_id"]]
+    records.append(record)
+    save_json(BOT_CONTEXT_FILE, records[-30:])
+    if msg_id:
+        MSG_TO_CONTEXT[msg_id] = record
+
+def load_context_index() -> None:
+    for r in load_json(BOT_CONTEXT_FILE, []):
+        if r.get("msg_id"):
+            MSG_TO_CONTEXT[r["msg_id"]] = r
+
+def recent_context(n: int = 8) -> list[dict]:
+    return load_json(BOT_CONTEXT_FILE, [])[-n:]
+
+def llm_answer(question: str, records: list[dict]) -> str:
+    """Mode conversationnel : réponse texte libre avec le contexte des bookmarks."""
+    ctx = []
+    for r in records:
+        b = r.get("brief", {})
+        ctx.append(
+            f"Tweet de @{r['author']} ({r['created_at']}):\n\"\"\"{r['text'][:800]}\"\"\"\n"
+            f"Brief envoyé: verdict={b.get('verdict')}, résumé={b.get('resume')}, "
+            f"fraîcheur={b.get('nouveaute')} — {b.get('contexte_nouveaute')}\n"
+            f"Limites notées: {b.get('limites')}\n"
+            f"Sources: {json.dumps([s.get('url') for s in (r.get('sources') or []) if isinstance(s, dict)])}"
+        )
+    system = load_system_prompt() + "\n\nMODE ACTUEL : conversation. L'utilisateur pose une question sur ses bookmarks récents. Réponds en texte libre (pas de JSON), en pote cash, direct et utile."
+    user = f"BOOKMARKS RÉCENTS ET LEURS BRIEFS :\n\n" + "\n\n---\n\n".join(ctx) + f"\n\nQUESTION DE L'UTILISATEUR :\n{question}"
+    last_err = None
+    for attempt in range(3):
+        try:
+            r = requests.post(
+                f"{PROXY_URL}/v1/messages",
+                headers={"Authorization": f"Bearer {PROXY_API_KEY}", "Content-Type": "application/json"},
+                json={"model": AI_MODEL, "max_tokens": 2000, "temperature": 0.5,
+                      "system": system,
+                      "messages": [{"role": "user", "content": user}]},
+                timeout=120,
+            )
+            r.raise_for_status()
+            blocks = r.json().get("content", [])
+            text = "\n".join(b.get("text", "") for b in blocks if b.get("type") == "text").strip()
+            if text:
+                return text
+            raise ValueError("réponse vide")
+        except Exception as e:
+            last_err = e
+            if attempt < 2:
+                time.sleep((attempt + 1) * 4)
+    return f"(j'ai raté la réponse : {last_err})"
+
+def telegram_listener() -> None:
+    """Long polling getUpdates — répond aux questions sur les bookmarks."""
+    load_context_index()
+    offset = 0
+    print("[listener] Telegram en écoute")
+    while True:
+        try:
+            r = requests.get(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates",
+                params={"offset": offset, "timeout": 30, "allowed_updates": json.dumps(["message"])},
+                timeout=40,
+            )
+            for u in r.json().get("result", []):
+                offset = u["update_id"] + 1
+                msg = u.get("message") or {}
+                chat_id = (msg.get("chat") or {}).get("id")
+                text = (msg.get("text") or "").strip()
+                if not chat_id or not text or str(chat_id) != str(TELEGRAM_CHAT_ID):
+                    continue
+                reply = msg.get("reply_to_message", {})
+                reply_id = reply.get("message_id")
+                record = MSG_TO_CONTEXT.get(reply_id)
+                if record:
+                    answer = llm_answer(text, [record])
+                elif text.startswith("/"):
+                    answer = ("Commandes : réponds à n'importe quel brief pour me poser une question "
+                              "précise, ou écris-moi direct pour parler des derniers bookmarks.")
+                else:
+                    answer = llm_answer(text, recent_context())
+                esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                requests.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                    json={"chat_id": chat_id, "text": esc(answer)[:4000], "parse_mode": "HTML"},
+                    timeout=30,
+                )
+                print(f"[listener] réponse envoyée ({len(answer)} chars)")
+        except Exception as e:
+            print(f"[listener] erreur: {e}")
+            time.sleep(5)
 
 # ---------------------------------------------------------------- cycle
 
@@ -409,7 +525,7 @@ def process_new(tweets: list[dict], seen: dict, notify: bool) -> int:
             print(f"[brief] https://x.com/{t['author_handle'] or 'x'}/status/{t['tweet_id']}")
             exa = exa_search(t["text"])
             brief = llm_brief(t, exa)
-            send_telegram(t, brief)
+            send_telegram(t, brief, exa)
             time.sleep(2)
         seen[t["tweet_id"]] = now_iso
         save_json(SEEN_FILE, seen)   # sauvegarde à chaque envoi : pas de re-spam si crash
@@ -460,7 +576,9 @@ def main() -> None:
         n = poll_cycle(notify=False)
         print(f"[baseline] {n} tweets marqués vus")
     elif mode == "daemon":
+        import threading
         print(f"[daemon] démarré — poll HTTP toutes les {POLL_INTERVAL}s")
+        threading.Thread(target=telegram_listener, daemon=True).start()
         pending_export = False
         while True:
             try:
