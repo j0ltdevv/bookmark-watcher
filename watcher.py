@@ -260,6 +260,16 @@ def push_to_siftly(tweets: list[dict]) -> None:
     except Exception as e:
         print(f"[siftly] import échoué (non bloquant): {e}")
 
+def export_obsidian() -> None:
+    """Régénère le vault Obsidian via Siftly (régénération complète, idempotente)."""
+    try:
+        r = requests.get(f"{SIFTLY_URL}/api/export/obsidian", params={"format": "obsidian"}, timeout=120)
+        r.raise_for_status()
+        out = r.json()
+        print(f"[obsidian] vault régénéré : {out.get('count', '?')} notes, {len(out.get('errors', []))} erreur(s)")
+    except Exception as e:
+        print(f"[obsidian] export échoué (non bloquant): {e}")
+
 def exa_search(query: str) -> list[dict]:
     if not EXA_API_KEY or not query:
         return []
@@ -417,7 +427,12 @@ def poll_cycle(notify: bool = True) -> int:
             print(f"[poll] échec après refresh : {err2} — cycle abandonné")
             return 0
     print(f"[poll] {len(tweets)} tweets reçus")
-    return process_new(tweets, load_json(SEEN_FILE, {}), notify=notify)
+    n = process_new(tweets, load_json(SEEN_FILE, {}), notify=notify)
+    if n > 0 and notify:
+        # import + analyse faits : on régénère le vault (le 2e export du cycle
+        # suivant rattrapera tags/catégories arrivés entre-temps)
+        export_obsidian()
+    return n
 
 def mode_login() -> None:
     print("Connexion X — connecte-toi dans la fenêtre qui s'ouvre.")
@@ -446,9 +461,16 @@ def main() -> None:
         print(f"[baseline] {n} tweets marqués vus")
     elif mode == "daemon":
         print(f"[daemon] démarré — poll HTTP toutes les {POLL_INTERVAL}s")
+        pending_export = False
         while True:
             try:
-                poll_cycle(notify=True)
+                n = poll_cycle(notify=True)
+                if pending_export:
+                    # rattrape les tags/catégories calculés depuis l'export précédent
+                    export_obsidian()
+                    pending_export = False
+                if n > 0:
+                    pending_export = True
             except KeyboardInterrupt:
                 raise
             except Exception as e:
