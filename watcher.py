@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 import sys
 import time
 from datetime import datetime, timezone
@@ -278,8 +279,10 @@ def push_to_siftly(tweets: list[dict]) -> None:
         )
         r.raise_for_status()
         print(f"[siftly] import OK: {r.json()}")
+        health("siftly", True)
     except Exception as e:
         print(f"[siftly] import échoué (non bloquant): {e}")
+        health("siftly", False)
 
 def export_obsidian() -> None:
     """Régénère le vault Obsidian via Siftly (régénération complète, idempotente)."""
@@ -288,8 +291,10 @@ def export_obsidian() -> None:
         r.raise_for_status()
         out = r.json()
         print(f"[obsidian] vault régénéré : {out.get('count', '?')} notes, {len(out.get('errors', []))} erreur(s)")
+        health("obsidian", True)
     except Exception as e:
         print(f"[obsidian] export échoué (non bloquant): {e}")
+        health("obsidian", False)
 
 def exa_search(query: str, num_results: int = 4, with_text: bool = False, start_date: str | None = None) -> list[dict]:
     if not EXA_API_KEY or not query:
@@ -692,6 +697,21 @@ def telegram_listener() -> None:
 
                 # le bot cherche LUI-MÊME sur le web avant de répondre
                 log_question(text)
+                if lower.startswith(("cherche ", "recherche ", "dans ma biblio", "c'était quoi",
+                                     "c'etait quoi", "j'avais", "retrouve", "t'as pas un tweet")):
+                    results = search_library(text)
+                    if results:
+                        note = "Résultats de SA bibliothèque Siftly :\n" + "\n".join(
+                            f"- @{r['author']} (verdict {r['brief'].get('verdict')}) : {r['text'][:200]} "
+                            f"→ https://x.com/{r['author']}/status/{r['tweet_id']}" for r in results)
+                        ask_and_send(f"L'utilisateur cherche dans SA bibliothèque : « {text} ». "
+                                     f"Présente chaque résultat (verdict + 1 bullet + lien cliquable) et propose un angle d'analyse.",
+                                     results, chat_id, context_note=note)
+                    else:
+                        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                                      json={"chat_id": chat_id, "text": "🤷 rien trouvé dans ta bibliothèque sur ça — "
+                                            "essaie avec d'autres mots, ou bookmark-le d'abord 😉"}, timeout=15)
+                    continue
                 if record and lower in ("deep", "approfondir", "approfondis", "🔬"):
                     ask_and_send("Deep dive ce sujet : va chercher la source principale (repo/article), "
                                  "vérifie les claims en détail, architecture, alternatives, et ce que le tweet ne dit pas.",
@@ -723,6 +743,129 @@ def telegram_listener() -> None:
         except Exception as e:
             print(f"[listener] erreur: {e}")
             time.sleep(5)
+
+# ---------------------------------------------------------------- bibliothèque parlante
+
+SIFTLY_DB = Path(CFG.get("SIFTLY_DB", str(BASE.parent / "siftly" / "prisma" / "dev.db")))
+
+def search_library(query: str, limit: int = 5) -> list[dict]:
+    """Recherche FTS5 dans la bibliothèque Siftly (lecture directe SQLite)."""
+    clean = re.sub(r"[^A-Za-z0-9À-ÿ ]", " ", query).strip()
+    if not clean:
+        return []
+    terms = " ".join(f'"{t}"*' for t in clean.split()[:6])
+    out = []
+    try:
+        con = sqlite3.connect(f"file:{SIFTLY_DB}?mode=ro", uri=True)
+        rows = con.execute(
+            """SELECT b."tweetId", b.text, b."authorHandle", b.verdict, b.ai_summary
+               FROM bookmark_fts f JOIN Bookmark b ON b.id = f.bookmark_id
+               WHERE bookmark_fts MATCH ? ORDER BY rank LIMIT ?""",
+            (terms, limit),
+        ).fetchall()
+        con.close()
+    except Exception as e:
+        print(f"[library] FTS erreur: {e}")
+        rows = []
+    if not rows:   # fallback LIKE si le FTS ne matche pas
+        try:
+            con = sqlite3.connect(f"file:{SIFTLY_DB}?mode=ro", uri=True)
+            like = f"%{clean.split()[0]}%"
+            rows = con.execute(
+                """SELECT "tweetId", text, "authorHandle", verdict, ai_summary
+                   FROM Bookmark WHERE text LIKE ? ORDER BY "importedAt" DESC LIMIT ?""",
+                (like, limit),
+            ).fetchall()
+            con.close()
+        except Exception:
+            rows = []
+    for tweet_id, text, handle, verdict, summary in rows:
+        out.append({
+            "tweet_id": tweet_id, "author": handle or "x", "created_at": "",
+            "text": (text or "")[:800],
+            "brief": {"verdict": verdict or "?", "resume": summary or ""},
+            "sources": [], "ts": "",
+        })
+    return out
+
+# ---------------------------------------------------------------- watchlist GitHub
+
+WATCHLIST_FILE = BASE / "watchlist.json"
+GITHUB_RE = re.compile(r"github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)")
+
+def build_watchlist() -> dict:
+    """Repose sur les records SOLIDE/GAME_CHANGER contenant un lien GitHub."""
+    wl = {k.lower(): v for k, v in load_json(WATCHLIST_FILE, {}).items()}
+    for r in load_json(BOT_CONTEXT_FILE, []):
+        if (r.get("brief", {}) or {}).get("verdict") not in ("SOLIDE", "GAME_CHANGER"):
+            continue
+        urls = [s.get("url", "") for s in (r.get("sources") or []) if isinstance(s, dict)]
+        found = GITHUB_RE.findall(" ".join(urls + [r.get("text", "")]))
+        for slug in found:
+            slug = slug.rstrip(".…,)")
+            if slug.count("/") == 1 and len(slug) < 60:
+                key = slug.lower()
+                wl.setdefault(key, {"added": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                                    "last_tag": None, "display": slug})
+    if wl:
+        save_json(WATCHLIST_FILE, wl)
+    return wl
+
+def check_watchlist() -> int:
+    """Vérifie les nouvelles releases GitHub ; alerte Telegram si nouveau tag."""
+    wl = build_watchlist()
+    if not wl:
+        print("[watch] watchlist vide")
+        return 0
+    alerts = 0
+    for slug, info in list(wl.items())[:25]:
+        try:
+            r = requests.get(f"https://api.github.com/repos/{slug}/releases/latest", timeout=15)
+            if r.status_code == 404:   # pas de release formelle — skip silencieux
+                continue
+            r.raise_for_status()
+            tag = r.json().get("tag_name") or ""
+            if not tag:
+                continue
+            if info.get("last_tag") and info["last_tag"] != tag:
+                name = r.json().get("name") or tag
+                body = (r.json().get("body") or "")[:600]
+                tg_send(f"🚀 **{slug}** — nouvelle release **{tag}** ({name})\n\n{body}\n\nhttps://github.com/{slug}/releases")
+                alerts += 1
+            info["last_tag"] = tag
+            info["last_checked"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        except Exception as e:
+            print(f"[watch] {slug}: {e}")
+        time.sleep(1)
+    save_json(WATCHLIST_FILE, wl)
+    print(f"[watch] {len(wl)} repos surveillés, {alerts} nouvelle(s) release(s)")
+    return alerts
+
+# ---------------------------------------------------------------- santé / auto-surveillance
+
+_HEALTH = {"poll": 0, "brief": 0, "siftly": 0, "obsidian": 0}
+_ALERTED: set[str] = set()
+HEALTH_THRESHOLD = 3
+HEALTH_LABEL = {
+    "poll": "le polling X plante en boucle (session ou réseau ?)",
+    "brief": "les briefs LLM échouent (proxy/NIM down ?)",
+    "siftly": "l'import vers Siftly échoue",
+    "obsidian": "l'export Obsidian échoue",
+}
+
+def health(key: str, ok: bool) -> None:
+    if ok:
+        _HEALTH[key] = 0
+        if key in _ALERTED:
+            _ALERTED.discard(key)
+            tg_send(f"✅ **Rétabli** — {HEALTH_LABEL[key]}")
+        return
+    _HEALTH[key] = _HEALTH.get(key, 0) + 1
+    if _HEALTH[key] >= HEALTH_THRESHOLD and key not in _ALERTED:
+        _ALERTED.add(key)
+        tg_send(f"🩺 **J'ai un problème** — {HEALTH_LABEL[key]} ({_HEALTH[key]} échecs d'affilée). "
+                f"Regarde `journalctl --user -u bookmark-watcher -f`.")
+        print(f"[health] alerte envoyée: {key}")
 
 # ---------------------------------------------------------------- digest + veille proactive
 
@@ -838,6 +981,50 @@ def mode_morning() -> None:
     mode_digest()
     time.sleep(3)
     mode_proactive()
+    time.sleep(3)
+    check_watchlist()
+
+def mode_weekly() -> None:
+    """Mémo hebdomadaire : note Markdown dans le vault Obsidian + message Telegram."""
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    recs = []
+    for r in load_json(BOT_CONTEXT_FILE, []):
+        try:
+            if datetime.fromisoformat(r.get("ts", "")) >= cutoff:
+                recs.append(r)
+        except ValueError:
+            pass
+    if not recs:
+        print("[weekly] rien cette semaine")
+        return
+    lines = []
+    for r in recs:
+        b = r.get("brief", {}) or {}
+        lines.append(f"- {b.get('verdict')} | @{r['author']} | {r['text'][:120]} | "
+                     f"réactions={json.dumps(r.get('reactions', {}))}")
+    memo = _llm_text(
+        "Rédige la MÉMO HEBDO de veille en Markdown (langue fr, enjoué, ULTRA structuré : headers ##, "
+        "bullets courts d'une ligne, zéro pavé). Sections :\n"
+        "## 🏆 Les 3 qui valent le coup (titre + 1 bullet pourquoi + lien)\n"
+        "## 📊 Le reste (verdict / sujet / @auteur, une ligne chacun)\n"
+        "## 🍲 Doublons et bruit torchés\n"
+        "## 🧠 Ce que j'ai appris de tes goûts cette semaine (2-3 bullets)\n\n"
+        "BOOKMARKS DE LA SEMAINE :\n" + "\n".join(lines) +
+        f"\n\nSA MÉMOIRE D'APPRENTISSAGE :\n{LEARNINGS_FILE.read_text()[:1200]}",
+        max_tokens=1800,
+    )
+    if not memo:
+        print("[weekly] génération échouée")
+        return
+    week = datetime.now(timezone.utc).isocalendar()
+    vault = BASE.parent / "Obsidian" / "Twitter-Graph"
+    memo_dir = vault / "Memos"
+    memo_dir.mkdir(parents=True, exist_ok=True)
+    path = memo_dir / f"Semaine-{week.week:02d}.md"
+    path.write_text(f"# Veille — Semaine {week.week:02d} ({week.year})\n\n{memo}\n")
+    tg_send(f"📖 **Mémo hebdo écrite** → Obsidian : `Memos/Semaine-{week.week:02d}.md`\n\n{memo[:2500]}")
+    print(f"[weekly] écrite: {path}")
 
 # ---------------------------------------------------------------- vocaux (whisper local)
 
@@ -957,6 +1144,7 @@ def process_new(tweets: list[dict], seen: dict, notify: bool) -> int:
             print(f"[brief] https://x.com/{t['author_handle'] or 'x'}/status/{t['tweet_id']}")
             exa = exa_search(t["text"])
             brief = llm_brief(t, exa, recent=recent_context(15))
+            health("brief", bool(brief))
             send_telegram(t, brief, exa)
             time.sleep(2)
         seen[t["tweet_id"]] = now_iso
@@ -1008,6 +1196,8 @@ def main() -> None:
         # premier lancement : marque tout ce qui existe comme déjà vu, sans spammer
         n = poll_cycle(notify=False)
         print(f"[baseline] {n} tweets marqués vus")
+    elif mode == "weekly":
+        mode_weekly()
     elif mode == "digest":
         mode_digest()
     elif mode == "morning":
@@ -1020,6 +1210,7 @@ def main() -> None:
         while True:
             try:
                 n = poll_cycle(notify=True)
+                health("poll", True)
                 if pending_export:
                     # rattrape les tags/catégories calculés depuis l'export précédent
                     export_obsidian()
@@ -1030,6 +1221,7 @@ def main() -> None:
                 raise
             except Exception as e:
                 print(f"[daemon] erreur de cycle: {e}")
+                health("poll", False)
             time.sleep(POLL_INTERVAL)
     else:
         print(f"Usage: {sys.argv[0]} [login|refresh|baseline|once|daemon]")
