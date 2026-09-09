@@ -26,5 +26,174 @@
   ],
   "msg_id": 11,
   "ts": "2026-09-09T17:55:45+00:00"
+ },
+ {
+  "tweet_id": "2097469029115908460",
+  "author": "k2sbhai",
+  "text": "Claude is getting seriously powerful for security testing \ud83d\ude33\n\nHexStrike AI connects LLMs with 150+ cybersecurity tools through MCP\n\nwhat you get:\n\n- 12 specialized AI agents\n- 150+ security tools\n- web + network testing\n- automated pentesting workflows\n- Kali Linux support\n\nthe interesting part:\n\n> Claude can generate and run security tests\n> it can work through vulnerabilities and analyze the results\n> real security tools + AI in one workflow\n\ngetting started:\n\n1. go to https://t.co/xrN8Sqiw2Z\n2. clone the repo\n3. follow the setup guide\n4. connect your LLM\n5. run it on systems you\u2019re authorized to test\n\nAI-powered security testing is moving fast \ud83d\udc40",
+  "created_at": "Tue Sep 08 23:36:00 +0000 2026",
+  "brief": {
+   "resume": "HexStrike AI est un serveur MCP qui expose plus de 150 outils de pentest (Nmap, Metasploit, Burp, etc.) \u00e0 travers douze agents IA sp\u00e9cialis\u00e9s, permettant \u00e0 un LLM comme Claude de g\u00e9n\u00e9rer, ex\u00e9cuter et analyser des tests de s\u00e9curit\u00e9 de fa\u00e7on automatis\u00e9e. Le projet s\u2019appuie sur le protocole Model Context Protocol pour orchestrer les outils dans des workflows lin\u00e9aires ou conditionnels, avec un support natif de Kali Linux. Il fournit des playbooks pr\u00eats \u00e0 l\u2019emploi pour le scanning, l\u2019exploitation et le post\u2011exploitation, le tout pilotable via des prompts en langage naturel. L\u2019originalit\u00e9 r\u00e9side dans l\u2019abstraction de la couche outil via MCP plut\u00f4t que dans l\u2019invention de nouveaux modules de pentest.",
+   "verdict": "SOLIDE",
+   "nouveaute": "non",
+   "contexte_nouveaute": "Le projet \u00e9tait d\u00e9j\u00e0 d\u00e9crit en mai 2026 sur dudarik.com et d\u00e9taill\u00e9 en ao\u00fbt 2026 sur AI Security Hub; le d\u00e9p\u00f4t GitHub indique une version v6.0 mais sans date pr\u00e9cise, ce qui montre que l\u2019annonce du tweet rel\u00e8ve plus d\u2019un rappel que d\u2019une nouveaut\u00e9 fondamentale.",
+   "raison": "Pour un pentesteur qui veut cha\u00eener rapidement des outils sans \u00e9crire de scripts, HexStrike AI offre une interface unifi\u00e9e et pilotable par LLM, ce qui peut gagner du temps sur des engagements r\u00e9p\u00e9t\u00e9s ; l\u2019acc\u00e8s \u00e0 150+ outils via MCP \u00e9vite de devoir maintenir des wrappers maison. C\u2019est donc une aide concr\u00e8te, m\u00eame si le concept sous\u2011jacent n\u2019est pas in\u00e9dit.",
+   "limites": "L\u2019efficacit\u00e9 d\u00e9pend de la qualit\u00e9 des prompts et de la capacit\u00e9 de Claude \u00e0 \u00e9viter les hallucinations ; l\u2019utilisation d\u2019un LLM externe introduit des co\u00fbts et des limites de taux, et les r\u00e9sultats doivent toujours \u00eatre revus manuellement pour \u00e9viter les faux positifs ou les actions non autoris\u00e9es.",
+   "sources": [
+    "https://github.com/0x4m4/hexstrike-ai",
+    "https://dudarik.com/en/blog/hexstrike-ai-mcp/",
+    "https://aisecurityhub.ai/hexstrike-ai-the-mcp-server-putting-150-offensive-security-tools-in-an-agents-hands/",
+    "https://www.mcpgee.com/servers/hexstrike-ai"
+   ]
+  },
+  "sources": [
+   {
+    "title": "HexStrike AI MCP Agents v6.0",
+    "url": "https://github.com/0x4m4/hexstrike-ai",
+    "date": ""
+   },
+   {
+    "title": "HexStrike AI MCP: Run 150+ Pentesting Tools from Claude | dudarik.com",
+    "url": "https://dudarik.com/en/blog/hexstrike-ai-mcp/",
+    "date": "2026-05-03"
+   },
+   {
+    "title": "HexStrike AI: The MCP Server Putting 150+ Offensive Security Tools in an AI Agent\u2019s Hands \u2013 AI Security Hub Blog",
+    "url": "https://aisecurityhub.ai/hexstrike-ai-the-mcp-server-putting-150-offensive-security-tools-in-an-ai-agents-hands/",
+    "date": "2026-08-17"
+   },
+   {
+    "title": "HexStrike AI MCP Server (2026) | Setup, Examples & Guide",
+    "url": "https://www.mcpgee.com/servers/hexstrike-ai",
+    "date": "2025-07-10"
+   }
+  ],
+  "msg_id": 14,
+  "ts": "2026-09-09T17:58:29+00:00"
+ },
+ {
+  "tweet_id": "2097738028089254379",
+  "author": "punchw45k",
+  "text": "Nex-N2.5 just dropped on OpenRouter, completely free \ud83d\ude33\n\nNew agent model, pro + mini versions, both $0. No card.\n\n\u2192 https://t.co/hhyIyeCfo8 \u2192 try it\n\nGo grab it. https://t.co/sfRUvhQ6rp",
+  "created_at": "Wed Sep 09 17:24:54 +0000 2026",
+  "brief": {
+   "resume": "Nex-N2.5 est un nouveau mod\u00e8le d'agent lanc\u00e9 sur OpenRouter, disponible en version Pro (397B param\u00e8tres orient\u00e9s computer\u2011use) et Mini, tous deux propos\u00e9s gratuitement sans carte de cr\u00e9dit. Le mod\u00e8le est pr\u00e9sent\u00e9 comme capable d'ex\u00e9cuter des t\u00e2ches d'utilisation d'ordinateur (navigation, interaction avec des interfaces) gr\u00e2ce \u00e0 son \u00e9chelle et \u00e0 son fine\u2011tuning orient\u00e9 agent. Les poids ne sont pas encore publics (weights pending) mais le service est d\u00e9j\u00e0 live via l'API OpenRouter. Cela le diff\u00e9rencie des mod\u00e8les propri\u00e9taires payants ou des mod\u00e8les open\u2011source de taille similaire qui restent g\u00e9n\u00e9ralement derri\u00e8re un paywall ou n\u00e9cessitent un d\u00e9ploiement local.",
+   "verdict": "SOLIDE",
+   "nouveaute": "oui",
+   "contexte_nouveaute": "Le billet d'annonce d'OrcaRouter (ou OpenRouter) date du 8\u202fseptembre\u202f2026, soit la veille du tweet, indiquant que le mod\u00e8le vient d'\u00eatre mis en ligne. Les pages de tarification sur OpenRouter montrent les versions gratuites d\u00e9j\u00e0 accessibles.",
+   "raison": "Pour un expert en cybers\u00e9curit\u00e9 et en automatisation, disposer d'un mod\u00e8le d'agent de cette taille gratuitement permet de prototyper rapidement des agents d'intrusion ou de test sans frais d'infrastructure, ce qui est r\u00e9ellement utile pour la veille. M\u00eame si les poids ne sont pas encore publi\u00e9s, l'acc\u00e8s API gratuit r\u00e9duit la barri\u00e8re d'entr\u00e9e compar\u00e9 aux offres payantes de mod\u00e8les similaires.",
+   "limites": "Le claim de 397B param\u00e8tres et de capacit\u00e9s computer\u2011use reste largement inv\u00e9rifiable tant que les poids ne sont pas publi\u00e9s ; les performances r\u00e9elles, les biais et les risques de s\u00e9curit\u00e9 ne sont pas encore document\u00e9s. De plus, la d\u00e9pendance \u00e0 une API tierce (OpenRouter) peut poser des questions de disponibilit\u00e9 et de confidentialit\u00e9 des donn\u00e9es.",
+   "sources": [
+    "https://openrouter.ai/nex-agi/nex-n2.5-pro:free",
+    "https://openrouter.ai/nex-agi/nex-n2.5-mini:free",
+    "https://www.orcarouter.ai/blog/nex-n2-5-pro-launch"
+   ]
+  },
+  "sources": [
+   {
+    "title": "Nex-N2.5-Pro (free) - API Pricing & Providers | OpenRouter",
+    "url": "https://openrouter.ai/nex-agi/nex-n2.5-pro:free",
+    "date": ""
+   },
+   {
+    "title": "Nex-N2.5-Mini (free) - API Pricing & Providers | OpenRouter",
+    "url": "https://openrouter.ai/nex-agi/nex-n2.5-mini:free",
+    "date": ""
+   },
+   {
+    "title": "Nex-N2.5-Pro - API Pricing & Providers | OpenRouter",
+    "url": "https://openrouter.ai/nex-agi/nex-n2.5-pro",
+    "date": ""
+   },
+   {
+    "title": "Nex-N2.5 Pro: 397B Computer-Use Model Live, Weights Pending",
+    "url": "https://www.orcarouter.ai/blog/nex-n2-5-pro-launch",
+    "date": "2026-09-08"
+   }
+  ],
+  "msg_id": 15,
+  "ts": "2026-09-09T17:59:34+00:00"
+ },
+ {
+  "tweet_id": "2097418919397216662",
+  "author": "milindlabs",
+  "text": "Read the TOS and try OpenMausBot\n\nhttps://t.co/xp5sPJkC4I",
+  "created_at": "Tue Sep 08 20:16:53 +0000 2026",
+  "brief": {
+   "resume": "OpenMausBot se pr\u00e9sente comme une plateforme permettant de d\u00e9ployer votre propre \u00e9quipe de bots IA dans une application de chat, avec le code source h\u00e9berg\u00e9 sur GitHub, un site web et une page de releases. Le tweet de @milindlabs se contente d\u2019inviter \u00e0 lire les conditions d\u2019utilisation et \u00e0 essayer le projet, sans apporter de d\u00e9tail technique ou de d\u00e9monstration.",
+   "verdict": "BRUIT",
+   "nouveaute": "non",
+   "contexte_nouveaute": "Aucune date de publication ou de derni\u00e8re release n\u2019est fournie dans les r\u00e9sultats web ; il n\u2019est donc pas possible de confirmer une nouveaut\u00e9 r\u00e9cente.",
+   "raison": "Fr\u00e9rot, c\u2019est juste un lien drop sans aucune info technique ou preuve d\u2019innovation ; \u00e7a n\u2019apporte rien de concret \u00e0 ta veille et ressemble plus \u00e0 de l\u2019autopromotion qu\u2019\u00e0 un vrai signal.",
+   "limites": "Absence de d\u00e9tails sur l\u2019architecture, les mod\u00e8les utilis\u00e9s ou les performances ; les claims ne sont pas sourc\u00e9s et la maturit\u00e9 du projet reste inconnue, ce qui laisse planer un doute de vaporware.",
+   "sources": [
+    "https://github.com/milind-soni/OpenMausBot",
+    "https://www.openmausbot.com/",
+    "https://github.com/milind-soni/openmausbot-releases/releases",
+    "https://github.com/milind-soni/OpenMausBot/blob/main/README.md"
+   ]
+  },
+  "sources": [
+   {
+    "title": "milind-soni/OpenMausBot",
+    "url": "https://github.com/milind-soni/OpenMausBot",
+    "date": ""
+   },
+   {
+    "title": "OpenMausBot: Your own team of AI bots, in a chat app",
+    "url": "https://www.openmausbot.com/",
+    "date": ""
+   },
+   {
+    "title": "Releases \u00b7 milind-soni/openmausbot-releases \u00b7 GitHub",
+    "url": "https://github.com/milind-soni/openmausbot-releases/releases",
+    "date": ""
+   },
+   {
+    "title": "README.md",
+    "url": "https://github.com/milind-soni/OpenMausBot/blob/main/README.md",
+    "date": ""
+   }
+  ],
+  "msg_id": 16,
+  "ts": "2026-09-09T18:01:08+00:00"
+ },
+ {
+  "tweet_id": "2097594200682311871",
+  "author": "realfxw",
+  "text": "Browser-Use \u56e2\u961f\u53d1\u5e03\u8f7b\u91cf\u7ea7\u65b0\u9879\u76ee\uff1aBrowser Use Pi \ud83e\udd67\n\n\u4e00\u4e2a\u6781\u81f4\u7cbe\u7b80\u7684 TypeScript Web Agent\uff0c\u7531 Astra \u57fa\u4e8e\u771f\u5b9e\u6d4f\u89c8\u5668\u8bc4\u6d4b\u9a71\u52a8\u6784\u5efa\u4e0e\u6253\u78e8\u3002\n\n\u6838\u5fc3\u4eae\u70b9\uff1a\n\n\u53bb\u7c97\u53d6\u7cbe\uff1a\u63d0\u70bc Browser Use\u3001Harness \u4e0e BrowserCode \u6838\u5fc3\uff0c\u5254\u9664\u5197\u4f59\u542f\u53d1\u5f0f\u89c4\u5219\uff08Heuristics\uff09\u4e0e\u5197\u4f59\u4ee3\u7801\n\n\u5e95\u5c42\u67b6\u6784\uff1a\u57fa\u4e8e Pi Mono + \u6301\u4e45\u5316 V8 REPL + \u539f\u751f CDP\uff0c\u5168 TypeScript \u6784\u5efa\n\n\u529f\u80fd\u5b8c\u5907\uff1a\u81ea\u5e26\u4e91\u6d4f\u89c8\u5668\u652f\u6301\u3001\u6301\u4e45\u4f1a\u8bdd\u3001\u6d41\u5f0f\u4f20\u8f93\u4ee5\u53ca\u6b65\u9aa4\u9650\u5236\n\n\u5b89\u88c5\u547d\u4ee4\uff1anpm install @browser_use/pi\n\n\u5f00\u6e90\u5730\u5740\uff1ahttps://t.co/gQCEnTDBUd\n\n#AI #WebAgent #TypeScript #OpenSource",
+  "created_at": "Wed Sep 09 07:53:23 +0000 2026",
+  "brief": {
+   "resume": "Browser Use Pi est un agent web TypeScript ultra\u2011l\u00e9ger pr\u00e9sent\u00e9 par l\u2019\u00e9quipe Browser\u2011Use le 9\u202fsept\u202f2026. Il reprend le noyau de Browser Use, Harness et BrowserCode en \u00e9liminant les r\u00e8gles heuristiques redondantes et le code superflu, puis s\u2019appuie sur Pi Mono, un REPL V8 persistant et le protocole CDP natif pour piloter un v\u00e9ritable navigateur. Le package offre nativement un cloud browser, des sessions persistantes, du streaming et une limitation du nombre d\u2019\u00e9tapes, installable via npm install @browser_use/pi. Tout le code est en TypeScript et le projet est open\u2011source sur GitHub (longweekendprojects/pi-browser-use).",
+   "verdict": "SOLIDE",
+   "nouveaute": "oui",
+   "contexte_nouveaute": "Le tweet du 9\u202fsept\u202f2026 annonce la sortie ; le d\u00e9p\u00f4t GitHub longweekendprojects/pi-browser-use appara\u00eet \u00e0 la m\u00eame p\u00e9riode (aucune date ant\u00e9rieure trouv\u00e9e), indiquant une publication r\u00e9cente.",
+   "raison": "C\u2019est une impl\u00e9mentation r\u00e9ellement utilisable d\u00e8s maintenant pour qui veut un agent web TS minimal sans les lourdeurs de Browser Use classique, ce qui le rend pertinent pour de l\u2019automatisation l\u00e9g\u00e8re ou du prototypage. En revanche, il n\u2019apporte pas de rupture technologique majeure par rapport \u00e0 l\u2019existant.",
+   "limites": "Le retrait des heuristiques peut r\u00e9duire la robustesse sur des sites complexes ; aucune \u00e9valuation comparative de performance ou de taux de succ\u00e8s n\u2019est fournie dans les sources disponibles. Le recours \u00e0 Pi Mono et au REPL V8 persistant reste peu \u00e9prouv\u00e9 \u00e0 grande \u00e9chelle.",
+   "sources": [
+    "https://github.com/longweekendprojects/pi-browser-use",
+    "https://github.com/browser-use/browsercode/",
+    "https://pi.dev/packages/@amaster.ai/pi-browser-use"
+   ]
+  },
+  "sources": [
+   {
+    "title": "longweekendprojects/pi-browser-use",
+    "url": "https://github.com/longweekendprojects/pi-browser-use",
+    "date": ""
+   },
+   {
+    "title": "browser-use/browsercode",
+    "url": "https://github.com/browser-use/browsercode/",
+    "date": ""
+   },
+   {
+    "title": "@amaster.ai/pi-browser-use \u00b7 Packages \u00b7 Pi",
+    "url": "https://pi.dev/packages/@amaster.ai/pi-browser-use",
+    "date": ""
+   }
+  ],
+  "msg_id": 23,
+  "ts": "2026-09-09T18:30:46+00:00"
  }
 ]

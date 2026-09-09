@@ -482,6 +482,24 @@ def telegram_listener() -> None:
                 msg = u.get("message") or {}
                 chat_id = (msg.get("chat") or {}).get("id")
                 text = (msg.get("text") or "").strip()
+
+                # vocaux → whisper → traités comme une question texte
+                voice = msg.get("voice") or msg.get("audio")
+                if voice and not text:
+                    tmp = BASE / f"voice_{u['update_id']}.ogg"
+                    if download_telegram_file(voice["file_id"], tmp):
+                        text = transcribe_voice(str(tmp))
+                        tmp.unlink(missing_ok=True)
+                        if text:
+                            print(f"[voice] transcrit: {text[:80]!r}")
+                            requests.post(
+                                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                                json={"chat_id": chat_id, "text": f"🎙️ <i>{esc(text[:200])}</i>"},
+                                timeout=15,
+                            )
+                        else:
+                            print("[voice] transcription vide")
+
                 if not chat_id or not text or str(chat_id) != str(TELEGRAM_CHAT_ID):
                     continue
                 reply = msg.get("reply_to_message", {})
@@ -495,15 +513,42 @@ def telegram_listener() -> None:
                 else:
                     answer = llm_answer(text, recent_context())
                 esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                # **gras** du modèle -> <b> Telegram (après échappement)
+                html = lambda s: re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", esc(s))
                 requests.post(
                     f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                    json={"chat_id": chat_id, "text": esc(answer)[:4000], "parse_mode": "HTML"},
+                    json={"chat_id": chat_id, "text": html(answer)[:4000], "parse_mode": "HTML"},
                     timeout=30,
                 )
                 print(f"[listener] réponse envoyée ({len(answer)} chars)")
         except Exception as e:
             print(f"[listener] erreur: {e}")
             time.sleep(5)
+
+# ---------------------------------------------------------------- vocaux (whisper local)
+
+_WHISPER = None
+def transcribe_voice(ogg_path: str) -> str:
+    """Transcrit un vocal avec faster-whisper (modèle chargé au premier usage)."""
+    global _WHISPER
+    if _WHISPER is None:
+        print("[voice] chargement du modèle whisper (première fois)…")
+        from faster_whisper import WhisperModel
+        _WHISPER = WhisperModel("small", device="cpu", compute_type="int8")
+    segments, _ = _WHISPER.transcribe(ogg_path, language="fr", beam_size=1)
+    return " ".join(s.text.strip() for s in segments).strip()
+
+def download_telegram_file(file_id: str, dest: Path) -> bool:
+    try:
+        r = requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile",
+                         params={"file_id": file_id}, timeout=15)
+        path = r.json()["result"]["file_path"]
+        data = requests.get(f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{path}", timeout=30)
+        dest.write_bytes(data.content)
+        return True
+    except Exception as e:
+        print(f"[voice] téléchargement échoué: {e}")
+        return False
 
 # ---------------------------------------------------------------- cycle
 
