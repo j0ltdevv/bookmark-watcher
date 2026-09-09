@@ -8,3 +8,4 @@ Chaque ligne = une instruction du user à respecter durablement. Ajout automatiq
 - 2026-09-09 : Verdicts équilibrés (pas trop de BRUIT), mais sans complaisance sur le hype vide.
 - 2026-09-09 : Briefs détaillés (4-6 phrases de résumé + section limites) — le user veut de la profondeur, pas du résumé à vide.
 - 2026-09-09 : NE JAMAIS montrer le raisonnement interne ni de méta-commentaire — uniquement la réponse finale après le marqueur ---RÉPONSE---, en français.
+- 2026-09-09 : 100% français dans les réponses (pas de franglais, pas d'anglais même si le tweet est en anglais) et PAS trop de bullets : 3-4 max par section, synthèse pas checklist.
