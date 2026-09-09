@@ -97,14 +97,13 @@ def _capture_bookmarks_request(headless: bool) -> dict:
     def on_response(response):
         if "graphql" in response.url and "/Bookmarks" in response.url:
             try:
-                body = response.json()
                 captured["url"] = response.url
-                captured["body"] = body
+                captured["headers"] = dict(response.request.headers)
+                captured["body"] = response.json()
             except Exception:
                 pass
 
-    with Camoufox(headless=headless, user_data_dir=PROFILE_DIR, geoip=True) as browser:
-        ctx = browser.new_context()
+    with Camoufox(headless=headless, persistent_context=True, user_data_dir=PROFILE_DIR, geoip=True) as ctx:
         page = ctx.new_page()
         page.on("response", on_response)
         page.goto("https://x.com/i/bookmarks", wait_until="domcontentloaded", timeout=90_000)
@@ -124,24 +123,29 @@ def _capture_bookmarks_request(headless: bool) -> dict:
         if "url" not in captured:
             raise RuntimeError("Requête GraphQL Bookmarks non interceptée — réessaie.")
 
-        cookies = {}
-        for c in ctx.cookies("https://x.com"):
-            if c["name"] in ("auth_token", "ct0"):
-                cookies[c["name"]] = c["value"]
+        cookies = {c["name"]: c["value"] for c in ctx.cookies("https://x.com")}
 
+    headers = captured.get("headers", {})
+    headers["cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
     session = {
         "bookmarks_url": captured["url"],
+        "headers": headers,
         "cookies": cookies,
         "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     save_json(SESSION_FILE, session)
-    print(f"[session] capturée ({len(cookies)} cookies)")
+    print(f"[session] capturée ({len(cookies)} cookies, bearer OK)")
     return {**session, "body": captured.get("body")}
 
 def http_headers(session: dict) -> dict:
-    cookies = session["cookies"]
+    if session.get("headers"):
+        h = dict(session["headers"])
+        # cookies frais > cookies figés dans les headers capturés
+        h["cookie"] = "; ".join(f"{k}={v}" for k, v in session.get("cookies", {}).items())
+        return h
+    cookies = session.get("cookies", {})
     return {
-        "authorization": X_WEB_BEARER,
+        "authorization": session.get("authorization", X_WEB_BEARER),
         "x-csrf-token": cookies.get("ct0", ""),
         "cookie": f"auth_token={cookies.get('auth_token', '')}; ct0={cookies.get('ct0', '')}",
         "x-twitter-active-user": "yes",
@@ -192,15 +196,24 @@ def parse_bookmarks_payload(payload: dict) -> list[dict]:
                     tweet_id = legacy.get("id_str") or result.get("rest_id")
                     if not tweet_id:
                         continue
-                    user = (
-                        result.get("core", {}).get("user_results", {}).get("result", {})
-                        .get("legacy", {})
+                    # structure 2026 : user_results.result.core.screen_name
+                    # (l'ancien legacy.screen_name reste en fallback)
+                    uresult = result.get("core", {}).get("user_results", {}).get("result", {})
+                    handle = (
+                        uresult.get("core", {}).get("screen_name")
+                        or uresult.get("legacy", {}).get("screen_name")
+                        or ""
+                    )
+                    # tweets longs : le texte complet est dans note_tweet
+                    note = (
+                        result.get("note_tweet", {}).get("note_tweet_results", {})
+                        .get("result", {}).get("text")
                     )
                     media = legacy.get("extended_entities", {}).get("media", []) or []
                     out.append({
                         "tweet_id": tweet_id,
-                        "text": legacy.get("full_text", "").strip(),
-                        "author_handle": user.get("screen_name", ""),
+                        "text": (note or legacy.get("full_text", "")).strip(),
+                        "author_handle": handle,
                         "created_at": legacy.get("created_at", ""),
                         "images": [
                             m.get("media_url_https") for m in media
@@ -409,8 +422,8 @@ def poll_cycle(notify: bool = True) -> int:
 def mode_login() -> None:
     print("Connexion X — connecte-toi dans la fenêtre qui s'ouvre.")
     print(f"Profil persistant : {PROFILE_DIR}")
-    with Camoufox(headless=False, user_data_dir=PROFILE_DIR, geoip=True) as browser:
-        page = browser.new_page()
+    with Camoufox(headless=False, persistent_context=True, user_data_dir=PROFILE_DIR, geoip=True) as ctx:
+        page = ctx.new_page()
         page.goto("https://x.com/login", wait_until="domcontentloaded")
         try:
             page.wait_for_url("**/home", timeout=600_000)
