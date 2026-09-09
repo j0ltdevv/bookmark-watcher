@@ -1025,7 +1025,17 @@ def mode_weekly() -> None:
         print("[weekly] génération échouée")
         return
     week = datetime.now(timezone.utc).isocalendar()
-    vault = BASE.parent / "Obsidian" / "Twitter-Graph"
+    # vault configuré dans Siftly (Settings) sinon fallback sibling
+    vault = None
+    try:
+        r = requests.get(f"{SIFTLY_URL}/api/settings", timeout=10)
+        path = r.json().get("obsidianVaultPath")
+        if path:
+            vault = Path(path)
+    except Exception:
+        pass
+    if not vault or not vault.exists():
+        vault = BASE.parent / "Obsidian" / "Twitter-Graph"
     memo_dir = vault / "Memos"
     memo_dir.mkdir(parents=True, exist_ok=True)
     path = memo_dir / f"Semaine-{week.week:02d}.md"
