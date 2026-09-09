@@ -531,7 +531,11 @@ def llm_answer(question: str, records: list[dict], exa_results: list[dict] | Non
         "\n\nMODE ACTUEL : conversation. L'utilisateur pose une question sur ses bookmarks récents. "
         "Réponds en texte libre (pas de JSON), en pote cash, direct et utile. "
         "Des résultats de recherche web frais sont fournis avec la question : UTILISE-LES. "
-        "Ne demande JAMAIS à l'utilisateur de te donner un lien ou une source — cherche et réponds."
+        "Ne demande JAMAIS à l'utilisateur de te donner un lien ou une source — cherche et réponds.\n"
+        "FORMAT DE SORTIE OBLIGATOIRE : d'abord ta réflexion interne (ce que tu veux), puis une ligne "
+        "contenant exactement ---RÉPONSE--- , puis TA RÉPONSE FINALE pour l'utilisateur. "
+        "Seule la partie après ---RÉPONSE--- sera envoyée : jamais de méta-commentaire "
+        "('the user wants', 'let's tackle', 'hmm'), jamais d'anglais dans la réponse finale."
     )
     user = (f"BOOKMARKS RÉCENTS ET LEURS BRIEFS :\n\n" + "\n\n---\n\n".join(ctx)
             + web
@@ -550,9 +554,12 @@ def llm_answer(question: str, records: list[dict], exa_results: list[dict] | Non
             r.raise_for_status()
             blocks = r.json().get("content", [])
             text = "\n".join(b.get("text", "") for b in blocks if b.get("type") == "text").strip()
-            if text:
-                return text
-            raise ValueError("réponse vide")
+            if not text:
+                raise ValueError("réponse vide")
+            # le modèle raisonne dans le texte : on ne garde que ce qui suit le marqueur
+            if "---RÉPONSE---" in text:
+                text = text.split("---RÉPONSE---", 1)[1].strip()
+            return text
         except Exception as e:
             last_err = e
             if attempt < 2:
