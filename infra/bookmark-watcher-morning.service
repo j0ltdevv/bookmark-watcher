@@ -1,0 +1,8 @@
+[Unit]
+Description=Digest quotidien + veille proactive du bookmark-watcher
+
+[Service]
+Type=oneshot
+WorkingDirectory=~/Documents/Default Project/bookmark-watcher
+ExecStart="~/Documents/Default Project/bookmark-watcher/venv/bin/python" -u watcher.py morning
+TimeoutStartSec=600
