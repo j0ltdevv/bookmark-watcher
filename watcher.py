@@ -269,7 +269,13 @@ def push_to_siftly(tweets: list[dict]) -> None:
         for t in tweets
     ]}
     try:
-        r = requests.post(f"{SIFTLY_URL}/api/import", json=payload, timeout=30)
+        # Siftly /api/import attend un multipart (champ file + source), pas du JSON brut
+        r = requests.post(
+            f"{SIFTLY_URL}/api/import",
+            files={"file": ("bookmarks.json", json.dumps(payload), "application/json")},
+            data={"source": "bookmark"},
+            timeout=30,
+        )
         r.raise_for_status()
         print(f"[siftly] import OK: {r.json()}")
     except Exception as e:
@@ -285,17 +291,18 @@ def export_obsidian() -> None:
     except Exception as e:
         print(f"[obsidian] export échoué (non bloquant): {e}")
 
-def exa_search(query: str, num_results: int = 4, with_text: bool = False) -> list[dict]:
+def exa_search(query: str, num_results: int = 4, with_text: bool = False, start_date: str | None = None) -> list[dict]:
     if not EXA_API_KEY or not query:
         return []
     try:
         contents = {"text": {"maxCharacters": 600}} if with_text else {"text": False}
+        body = {"query": query[:400], "numResults": num_results, "type": "auto", "contents": contents}
+        if start_date:
+            body["startPublishedDate"] = start_date
         r = requests.post(
             "https://api.exa.ai/search",
             headers={"x-api-key": EXA_API_KEY, "Content-Type": "application/json"},
-            json={"query": query[:400], "numResults": num_results, "type": "auto",
-                  "contents": contents},
-            timeout=20,
+            json=body, timeout=20,
         )
         r.raise_for_status()
         out = []
@@ -325,18 +332,29 @@ def _extract_json_object(text: str) -> str | None:
                 return text[start:i + 1]
     return None
 
-def llm_brief(tweet: dict, exa_results: list[dict]) -> dict:
+def llm_brief(tweet: dict, exa_results: list[dict], recent: list[dict] | None = None) -> dict:
     evidence = "\n".join(
         f"- {r['title']} ({r['date'] or 'date inconnue'}) {r['url']}" for r in exa_results
     ) or "(aucun résultat web)"
     author = tweet["author_handle"] or "inconnu"
+    already = ""
+    if recent:
+        lines = []
+        for r in recent:
+            b = r.get("brief", {}) or {}
+            lines.append(f"- @{r['author']} [{(r.get('ts') or '')[:10]}] verdict={b.get('verdict')}: {r['text'][:120]}")
+        already = ("SUJETS DÉJÀ TRAITÉS RÉCEMMENT (détecte les doublons, échos et suites) :\n"
+                   + "\n".join(lines)
+                   + '\n\nSi ce tweet recouvre fortement un sujet déjà traité, ajoute au JSON le champ '
+                   '"dejavu": {"ref": "@auteur le JJ/MM (verdict)", "note": "1 phrase : suite/echo/approfondissement de quoi"}, '
+                   "sinon \"dejavu\": null.\n\n")
     user_msg = f"""TWEET de @{author} (posté {tweet['created_at'] or 'date inconnue'}) :
 \"\"\"{tweet['text'][:1500]}\"\"\"
 
 RÉSULTATS WEB EXA (contexte : fraîcheur, écho éventuel) :
 {evidence}
 
-Analyse selon le système. Réponds UNIQUEMENT en JSON."""
+{already}Analyse selon le système. Réponds UNIQUEMENT en JSON."""
     last_err = None
     for attempt in range(4):   # NIM renvoie des rafales de 503 — retry avec backoff
         try:
@@ -392,6 +410,10 @@ def send_telegram(tweet: dict, brief: dict, exa_results: list[dict] | None = Non
         lines += [f"<i>« {excerpt}… »</i>", ""]
     lines.append(f"<b>{verdict}</b>")
 
+    dj = brief.get("dejavu")
+    if isinstance(dj, dict) and dj.get("ref"):
+        lines.append(f"\n🍲 <b>Déjà vu</b> — {esc(dj.get('ref', ''))} : {esc(dj.get('note', ''))}")
+
     resume = _bullets(brief.get("resume"))
     if resume:
         lines.append("\n<b>🎯 C'est quoi</b>")
@@ -417,12 +439,14 @@ def send_telegram(tweet: dict, brief: dict, exa_results: list[dict] | None = Non
 
     msg = "\n".join(lines)[:3900]
 
-    # boutons inline : une par suggestion + deep-dive + comparaison
+    # boutons inline : feedback + approfondir/comparer + suggestions
     keyboard = []
     tid = tweet["tweet_id"][-12:]   # callback_data limité à 64 octets
-    row = [{"text": "🔬 Approfondir", "callback_data": f"deep:{tid}"},
-           {"text": "🆚 Comparer", "callback_data": f"cmp:{tid}"}]
-    keyboard.append(row)
+    keyboard.append([{"text": "🔥", "callback_data": f"fb:hot:{tid}"},
+                     {"text": "😐", "callback_data": f"fb:meh:{tid}"},
+                     {"text": "🗑️", "callback_data": f"fb:trash:{tid}"},
+                     {"text": "🔬", "callback_data": f"deep:{tid}"},
+                     {"text": "🆚", "callback_data": f"cmp:{tid}"}])
     for i, s in enumerate(suggestions):
         label = s if len(s) <= 40 else s[:37] + "…"
         keyboard.append([{"text": f"👉 {label}", "callback_data": f"sugg:{i}:{tid}"}])
@@ -536,8 +560,23 @@ def find_record_by_tid(tid: str) -> dict | None:
             return r
     return None
 
+def update_record(tweet_id: str, mutate) -> dict | None:
+    """Applique une mutation au record correspondant et le resauvegarde."""
+    records = load_json(BOT_CONTEXT_FILE, [])
+    for r in records:
+        if r["tweet_id"] == tweet_id:
+            mutate(r)
+            save_json(BOT_CONTEXT_FILE, records)
+            if r.get("msg_id"):
+                MSG_TO_CONTEXT[r["msg_id"]] = r
+            return r
+    return None
+
+FEEDBACK_ACK = {"hot": "🔥 noté — je renforce ce genre", "meh": "😐 noté — calibrage en cours",
+                "trash": "🗑️ noté — je serai plus dur la prochaine fois"}
+
 def handle_callback(cb: dict) -> None:
-    """Boutons inline des briefs : approfondir / comparer / suggestion."""
+    """Boutons inline des briefs : feedback / approfondir / comparer / suggestion."""
     data = cb.get("data", "") or ""
     msg = cb.get("message") or {}
     chat_id = (msg.get("chat") or {}).get("id")
@@ -546,10 +585,19 @@ def handle_callback(cb: dict) -> None:
     requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery",
                   json={"callback_query_id": cb["id"]}, timeout=10)
 
-    record = MSG_TO_CONTEXT.get(msg.get("message_id")) or find_record_by_tid(data.split(":")[-1])
+    tid = data.split(":")[-1]
+    record = MSG_TO_CONTEXT.get(msg.get("message_id")) or find_record_by_tid(tid)
     if not record:
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
                       json={"chat_id": chat_id, "text": "🤔 j'ai perdu le contexte de ce brief (redémarrage ?) — renvoie-moi le lien du tweet"}, timeout=15)
+        return
+
+    if data.startswith("fb:"):
+        kind = data.split(":")[1]
+        update_record(record["tweet_id"], lambda r: r.setdefault("reactions", {}).update({kind: r.get("reactions", {}).get(kind, 0) + 1}))
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery",
+                      json={"callback_query_id": cb["id"], "text": FEEDBACK_ACK.get(kind, "noté"), "show_alert": False}, timeout=10)
+        print(f"[feedback] {kind} sur {record['tweet_id']}")
         return
 
     requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendChatAction",
@@ -570,16 +618,21 @@ def handle_callback(cb: dict) -> None:
     else:
         return
 
-    print(f"[callback] {data[:40]}")
-    web = exa_search(f"{question} {record['text'][:150]}", num_results=6, with_text=True)
-    answer = llm_answer(f"{question}\n\n(Tweet concerné de @{record['author']} : « {record['text'][:400]} »)",
-                        [record], web)
+    ask_and_send(question, record, chat_id, context_note=f"Tweet concerné de @{record['author']} : « {record['text'][:400]} »")
+
+def ask_and_send(question: str, records: list[dict], chat_id, context_note: str | None = None, search_extra: str = "") -> None:
+    """Recherche web + LLM + envoi de la réponse conversationnelle."""
+    q_full = f"{question}\n\n({context_note})" if context_note else question
+    print(f"[ask] {question[:60]}")
+    web = exa_search(f"{question} {(records[0]['text'][:150] if records else search_extra)[:200]}",
+                     num_results=6, with_text=True)
+    answer = llm_answer(q_full, records, web)
     esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     html = lambda s: re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", esc(s))
     requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
                   json={"chat_id": chat_id, "text": html(answer)[:4000], "parse_mode": "HTML"},
                   timeout=30)
-    print(f"[callback] réponse envoyée ({len(answer)} chars)")
+    print(f"[ask] réponse envoyée ({len(answer)} chars)")
 
 def telegram_listener() -> None:
     """Long polling getUpdates — répond aux questions sur les bookmarks."""
@@ -639,15 +692,25 @@ def telegram_listener() -> None:
 
                 # le bot cherche LUI-MÊME sur le web avant de répondre
                 log_question(text)
+                if record and lower in ("deep", "approfondir", "approfondis", "🔬"):
+                    ask_and_send("Deep dive ce sujet : va chercher la source principale (repo/article), "
+                                 "vérifie les claims en détail, architecture, alternatives, et ce que le tweet ne dit pas.",
+                                 [record], chat_id,
+                                 context_note=f"Tweet concerné de @{record['author']} : « {record['text'][:400]} »")
+                    continue
                 web = exa_search(text, num_results=6, with_text=True)
                 if record:
-                    answer = llm_answer(text, [record], web)
+                    ask_and_send(text, [record], chat_id, search_extra=record["text"][:150])
                 elif text.startswith("/"):
                     answer = ("Commandes : réponds à n'importe quel brief pour me poser une question "
                               "précise, ou écris-moi direct pour parler des derniers bookmarks. "
                               "Vocaux OK aussi 🎙️ — et commence par « retiens… » pour m'apprendre quelque chose.")
+                    esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                                  json={"chat_id": chat_id, "text": esc(answer), "parse_mode": "HTML"}, timeout=15)
                 else:
-                    answer = llm_answer(text, recent_context(), web)
+                    ask_and_send(text, recent_context(), chat_id, search_extra=text)
+                    continue
                 esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 # **gras** du modèle -> <b> Telegram (après échappement)
                 html = lambda s: re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", esc(s))
@@ -660,6 +723,121 @@ def telegram_listener() -> None:
         except Exception as e:
             print(f"[listener] erreur: {e}")
             time.sleep(5)
+
+# ---------------------------------------------------------------- digest + veille proactive
+
+def tg_send(text: str) -> None:
+    esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    html = lambda s: re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", esc(s))
+    requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                  json={"chat_id": TELEGRAM_CHAT_ID, "text": html(text)[:4000], "parse_mode": "HTML",
+                        "disable_web_page_preview": True}, timeout=30)
+
+def _records_last_24h() -> list[dict]:
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    out = []
+    for r in load_json(BOT_CONTEXT_FILE, []):
+        try:
+            if datetime.fromisoformat(r.get("ts", "")) >= cutoff:
+                out.append(r)
+        except ValueError:
+            pass
+    return out
+
+def _llm_text(prompt: str, max_tokens: int = 1500) -> str:
+    for attempt in range(3):
+        try:
+            r = requests.post(
+                f"{PROXY_URL}/v1/messages",
+                headers={"Authorization": f"Bearer {PROXY_API_KEY}", "Content-Type": "application/json"},
+                json={"model": AI_MODEL, "max_tokens": max_tokens, "temperature": 0.5,
+                      "system": load_system_prompt(),
+                      "messages": [{"role": "user", "content": prompt}]},
+                timeout=180,
+            )
+            r.raise_for_status()
+            text = "\n".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text").strip()
+            if text:
+                return text
+        except Exception as e:
+            if attempt == 2:
+                print(f"[llm] échec: {e}")
+            time.sleep((attempt + 1) * 4)
+    return ""
+
+def mode_digest() -> None:
+    recs = _records_last_24h()
+    if not recs:
+        tg_send("☀️ **Digest** — veille calme ces dernières 24 h, rien de nouveau bookmarké.")
+        return
+    lines = []
+    for r in recs:
+        b = r.get("brief", {}) or {}
+        author = r.get("author") or "x"
+        url = f"https://x.com/{author}/status/{r['tweet_id']}"
+        lines.append(f"- verdict={b.get('verdict')} | @{author} | {r['text'][:150]} | {url} | "
+                     f"déjà_vu={json.dumps(b.get('dejavu')) if b.get('dejavu') else 'non'} | "
+                     f"réactions={json.dumps(r.get('reactions', {}))}")
+    prompt = ("Rédige le DIGEST DU MATIN pour l'utilisateur, à partir des bookmarks des dernières 24 h.\n\n"
+              "BOOKMARKS :\n" + "\n".join(lines) + "\n\n"
+              "Format obligatoire, enjoué et ultra-structuré (bullets courts, PAS de pavés) :\n"
+              "- 1 ligne d'intro d'humeur\n"
+              "- '🏆 À ne pas rater' : top 2-3 avec lien et 1 bullet chacun\n"
+              "- '📊 Le reste en vrac' : une ligne par autre bookmark (verdict + sujet)\n"
+              "- '🍲 Doublons torchés' si des déjà-vu\n"
+              "- Termine par UNE question de relance liée au sujet le plus intéressant")
+    digest = _llm_text(prompt)
+    if digest:
+        tg_send("☀️ **DIGEST DU MATIN**\n\n" + digest)
+        print("[digest] envoyé")
+    else:
+        print("[digest] génération échouée")
+
+def mode_proactive() -> None:
+    themes = " | ".join(r["text"][:80] for r in load_json(BOT_CONTEXT_FILE, [])[-15:])
+    learnings = LEARNINGS_FILE.read_text()[:1500]
+    q = _llm_text(
+        f"Sur la base de ses thèmes récents : {themes}\n\nSA MÉMOIRE D'APPRENTISSAGE :\n{learnings}\n\n"
+        "Propose exactement 3 requêtes de recherche web pour lui trouver du contenu FRAÎS (dernières 48 h) "
+        "qu'il n'a probablement pas vu — nouveaux outils, releases, vulnérabilités, annonces. "
+        "Évite les sujets déjà dans la liste. Réponds UNIQUEMENT avec un JSON array de 3 strings.",
+        max_tokens=300,
+    )
+    try:
+        m = re.search(r"\[[\s\S]*\]", q)
+        queries = json.loads(m.group(0))[:3] if m else []
+    except Exception:
+        queries = []
+    if not queries:
+        print("[proactive] pas de requêtes générées")
+        return
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d")
+    results = []
+    for query in queries:
+        for s in exa_search(query, num_results=4, with_text=False, start_date=yesterday):
+            results.append({"query": query, **s})
+        time.sleep(1)
+    if not results:
+        print("[proactive] rien de frais trouvé")
+        return
+    src = "\n".join(f"- [{r.get('date', '?')}] {r['title']} — {r['url']}" for r in results[:20])
+    curated = _llm_text(
+        f"Résultats de recherche web frais (48 h) sur ses thèmes :\n{src}\n\n"
+        "Sélectionne les 2-3 VRAIMENT intéressants pour un expert cyber/dev (ignorer le contenu sponsorisé/recyclé). "
+        "Pour chacun : titre en gras, 1-2 bullets (quoi + pourquoi ça le concerne), lien. "
+        "Si rien ne vaut le coup, dis-le franchement en une ligne. Enjoué, bullets courts, PAS de pavés. "
+        "Commence par '📡 VEILLE PROACTIVE — j'ai cherché pour toi'.",
+        max_tokens=900,
+    )
+    if curated:
+        tg_send(curated)
+        print(f"[proactive] envoyé ({len(results)} résultats examinés)")
+
+def mode_morning() -> None:
+    mode_digest()
+    time.sleep(3)
+    mode_proactive()
 
 # ---------------------------------------------------------------- vocaux (whisper local)
 
@@ -732,7 +910,7 @@ def maybe_reflect() -> None:
     for r in records[-40:]:
         b = r.get("brief", {})
         stats.append(f"- @{r['author']}: verdict={b.get('verdict')}, fraîcheur={b.get('nouveaute')}, "
-                     f"thème={r['text'][:100]!r}")
+                     f"réactions={json.dumps(r.get('reactions', {}))}, thème={r['text'][:100]!r}")
     questions = ""
     if QUESTIONS_LOG.exists():
         qlines = QUESTIONS_LOG.read_text().strip().splitlines()[-30:]
@@ -778,7 +956,7 @@ def process_new(tweets: list[dict], seen: dict, notify: bool) -> int:
         if notify:
             print(f"[brief] https://x.com/{t['author_handle'] or 'x'}/status/{t['tweet_id']}")
             exa = exa_search(t["text"])
-            brief = llm_brief(t, exa)
+            brief = llm_brief(t, exa, recent=recent_context(15))
             send_telegram(t, brief, exa)
             time.sleep(2)
         seen[t["tweet_id"]] = now_iso
@@ -830,6 +1008,10 @@ def main() -> None:
         # premier lancement : marque tout ce qui existe comme déjà vu, sans spammer
         n = poll_cycle(notify=False)
         print(f"[baseline] {n} tweets marqués vus")
+    elif mode == "digest":
+        mode_digest()
+    elif mode == "morning":
+        mode_morning()
     elif mode == "daemon":
         import threading
         print(f"[daemon] démarré — poll HTTP toutes les {POLL_INTERVAL}s")
