@@ -1,0 +1,14 @@
+[Unit]
+Description=Siftly — bookmark manager Next.js (port 3000)
+After=nvidia-claude-proxy.service
+Requires=nvidia-claude-proxy.service
+
+[Service]
+Type=simple
+WorkingDirectory=~/Documents/Default Project/siftly
+ExecStart=/usr/bin/npm run dev
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

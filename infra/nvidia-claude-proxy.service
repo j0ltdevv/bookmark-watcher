@@ -1,0 +1,13 @@
+[Unit]
+Description=NVIDIA NIM -> Anthropic proxy (port 8089)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=~/Documents/Default Project/nvidia-claude-proxy
+ExecStart="~/Documents/Default Project/nvidia-claude-proxy/venv/bin/python" main.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
