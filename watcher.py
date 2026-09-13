@@ -20,6 +20,7 @@ Pipeline par nouveau bookmark :
 
 from __future__ import annotations
 
+import base64 as base64_mod
 import html as html_mod
 import json
 import os
@@ -238,6 +239,17 @@ def _tweets_from_instructions(instructions: list) -> list[dict]:
                     eu = u.get("expanded_url") or ""
                     if eu.startswith("http") and eu not in links:
                         links.append(eu)
+                # contexte de thread : tweet cité (dans le payload) + parent de réponse (id)
+                quoted = None
+                qres = result.get("quoted_status_result", {}).get("result", {})
+                if qres.get("__typename") == "TweetWithVisibilityResults":
+                    qres = qres.get("tweet", {})
+                qlegacy = qres.get("legacy", {})
+                if qlegacy.get("full_text"):
+                    qu = qres.get("core", {}).get("user_results", {}).get("result", {})
+                    qhandle = (qu.get("core", {}).get("screen_name")
+                               or qu.get("legacy", {}).get("screen_name") or "?")
+                    quoted = {"handle": qhandle, "text": qlegacy.get("full_text", "").strip()}
                 out.append({
                     "tweet_id": tweet_id,
                     "text": (note or legacy.get("full_text", "")).strip(),
@@ -252,6 +264,10 @@ def _tweets_from_instructions(instructions: list) -> list[dict]:
                     "likes": legacy.get("favorite_count", 0),
                     "rts": legacy.get("retweet_count", 0),
                     "replies": legacy.get("reply_count", 0),
+                    # contexte fil/citations/pièces jointes
+                    "reply_to": legacy.get("in_reply_to_status_id_str"),
+                    "quoted": quoted,
+                    "video_count": sum(1 for m in media if m.get("type") in ("video", "gif")),
                 })
     return out
 
@@ -396,6 +412,116 @@ def fetch_link(url: str, max_chars: int = 3500) -> dict | None:
         print(f"[fetch] échec {url[:80]} : {e}")
         return None
 
+def fetch_parent_tweet(tweet_id: str) -> dict | None:
+    """Tweet parent d'une réponse, via l'API syndication publique (sans login).
+    Token dérivé de l'id (formule du widget X : (id/1e15)*pi en base36)."""
+    if not tweet_id:
+        return None
+    try:
+        import math
+        def b36(n: int) -> str:
+            a = "0123456789abcdefghijklmnopqrstuvwxyz"
+            s = ""
+            while n:
+                s = a[n % 36] + s
+                n //= 36
+            return s or "0"
+        v = (int(tweet_id) / 1e15) * math.pi
+        int_part, frac = str(v).split(".")
+        f = float("0." + frac)
+        digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+        fs = ""
+        for _ in range(20):
+            f *= 36
+            d = int(f)
+            fs += digits[d]
+            f -= d
+        token = (b36(int(int_part)) + "." + fs).replace("0", "").replace(".", "")
+        r = requests.get(
+            f"https://cdn.syndication.twimg.com/tweet-result?id={tweet_id}&token={token}&lang=fr",
+            timeout=15,
+            headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"},
+        )
+        if not r.ok:
+            print(f"[parent] syndication {r.status_code} pour {tweet_id}")
+            return None
+        d = r.json()
+        return {
+            "handle": (d.get("user", {}) or {}).get("screen_name", "?"),
+            "text": (d.get("text") or "").strip(),
+        }
+    except Exception as e:
+        print(f"[parent] échec {tweet_id}: {e}")
+        return None
+
+VISION_MODELS = ["meta/llama-3.2-11b-vision-instruct", "meta/llama-3.2-90b-vision-instruct"]
+
+def analyze_image(image_url: str) -> str | None:
+    """Description d'une image jointe via le modèle vision NIM (à travers le proxy).
+    None si indisponible — l'appelant annotera le média comme non analysé."""
+    if not image_url:
+        return None
+    try:
+        img = requests.get(image_url, timeout=20)
+        if img.status_code != 200 or not img.content:
+            return None
+        b64 = base64_mod.standard_b64encode(img.content).decode()
+        for model in VISION_MODELS:
+            try:
+                r = requests.post(
+                    f"{PROXY_URL}/v1/messages",
+                    headers={"Authorization": f"Bearer {PROXY_API_KEY}", "Content-Type": "application/json"},
+                    json={"model": model, "max_tokens": 400,
+                          "messages": [{"role": "user", "content": [
+                              {"type": "image", "source": {"type": "base64",
+                                                           "media_type": img.headers.get("Content-Type", "image/jpeg").split(";")[0],
+                                                           "data": b64}},
+                              {"type": "text", "text": "Décris factuellement cette image (texte visible, code, graphique, UI) en 3 phrases max. C'est la pièce jointe d'un tweet analysé."}]}]},
+                    timeout=120,
+                )
+                if r.ok:
+                    text = " ".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text").strip()
+                    if text:
+                        return text
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"[vision] échec {image_url[:60]}: {e}")
+    return None
+
+def research_questions(tweet: dict, link: dict | None, parent: dict | None) -> list[str]:
+    """Le LLM formule 2-3 questions de vérification précises auxquelles le tweet
+    + la source ne répondent pas (doutes, claims à confirmer, limites pressenties)."""
+    user_msg = (
+        f"TWEET de @{tweet['author_handle'] or '?'} :\n\"\"\"{tweet['text'][:800]}\"\"\"\n\n"
+        + (f"Source principale lue : « {link['title']} » — début : {link['text'][:600]}\n\n" if link else "Pas de source lue.\n\n")
+        + (f"C'est une réponse au tweet de @{parent['handle']} : « {parent['text'][:300]} »\n\n" if parent else "")
+        + "Formule 2 à 3 questions de vérification PRÉCISES et recherchables sur le web auxquelles "
+        "ce tweet ne répond pas : claims chiffrés à confirmer, comparaison avec l'existant, "
+        "doutes techniques, ce qui pourrait être exagéré. Ces questions vont servir à chercher sur le web.\n"
+        'Réponds UNIQUEMENT en JSON : {"questions": ["q1", "q2", "q3"]}'
+    )
+    txt = _llm_text(user_msg, max_tokens=700)
+    m = _extract_json_object(txt)
+    if not m:
+        return []
+    try:
+        qs = json.loads(m).get("questions", [])
+    except json.JSONDecodeError:
+        return []
+    return [str(q).strip()[:150] for q in qs if str(q).strip()][:3]
+
+def research_evidence(questions: list[str]) -> list[dict]:
+    """Pour chaque question de vérification : une recherche web ciblée avec extraits."""
+    out = []
+    for q in questions:
+        res = exa_search(q, num_results=3, with_text=True)
+        for r in res:
+            r["question"] = q
+        out.extend(res)
+        time.sleep(1)
+    return out
+
 def _extract_json_object(text: str) -> str | None:
     """Premier objet JSON équilibré du texte (tolère le raisonnement autour).
     String-aware : les accolades entre guillemets ne comptent pas."""
@@ -425,10 +551,20 @@ def _extract_json_object(text: str) -> str | None:
                     return text[start:i + 1]
     return None
 
-def llm_brief(tweet: dict, exa_results: list[dict], recent: list[dict] | None = None, link: dict | None = None) -> dict:
+def llm_brief(tweet: dict, exa_results: list[dict], recent: list[dict] | None = None,
+              link: dict | None = None, parent: dict | None = None, quoted: dict | None = None,
+              media_desc: str | None = None, extra_evidence: list[dict] | None = None) -> dict:
     evidence = "\n".join(
         f"- {r['title']} ({r['date'] or 'date inconnue'}) {r['url']}" for r in exa_results
     ) or "(aucun résultat web)"
+    deep = ""
+    if extra_evidence:
+        lines = []
+        for r in extra_evidence[:9]:
+            lines.append(f"- (pour « {r.get('question','')} ») {r['title']} {r['url']}" +
+                         (f" : {r['text'][:200]}" if r.get("text") else ""))
+        deep = ("RECHERCHE APPROFONDIE (réponses trouvées aux questions de vérification) :\n"
+                + "\n".join(lines) + "\n\n")
     link_section = ""
     link_instruction = ""
     if link:
@@ -441,6 +577,27 @@ def llm_brief(tweet: dict, exa_results: list[dict], recent: list[dict] | None = 
     else:
         link_instruction = ('Pas de contenu de lien récupérable : champ "verification": "inaccessible", '
                             '"verification_note": raison courte. Ne présente JAMAIS les résultats Exa comme si tu avais lu la source.\n\n')
+    thread_section = ""
+    if parent:
+        thread_section += (f"CONTEXTE : ce tweet est une RÉPONSE au tweet de @{parent['handle']} :\n"
+                           f"\"\"\"{parent['text'][:500]}\"\"\"\n"
+                           "Évalue le tweet PAR RAPPORT à ce parent (est-il pertinent, apporte-t-il quelque chose ?).\n\n")
+    if quoted:
+        thread_section += (f"CONTEXTE : ce tweet CITE le tweet de @{quoted['handle']} :\n"
+                           f"\"\"\"{quoted['text'][:500]}\"\"\"\n"
+                           "Le commentaire ajouté par rapport au tweet cité est-il substantiel ?\n\n")
+    media_section = ""
+    if media_desc:
+        media_section = (f"PIÈCE JOINTE IMAGE (analysée par vision) :\n\"\"\"{media_desc[:600]}\"\"\"\n"
+                         "Intègre ce qu'elle montre dans l'analyse.\n\n")
+    elif tweet.get("images") or tweet.get("video_count"):
+        what = []
+        if tweet.get("images"):
+            what.append(f"{len(tweet['images'])} image(s)")
+        if tweet.get("video_count"):
+            what.append(f"{tweet['video_count']} vidéo(s)")
+        media_section = (f"⚠️ Le tweet a des pièces jointes ({', '.join(what)}) NON analysables : "
+                         "si un claim repose sur leur contenu, note-le explicitement dans \"limites\".\n\n")
     author = tweet["author_handle"] or "inconnu"
     already = ""
     if recent:
@@ -456,7 +613,7 @@ def llm_brief(tweet: dict, exa_results: list[dict], recent: list[dict] | None = 
     user_msg = f"""TWEET de @{author} (posté {tweet['created_at'] or 'date inconnue'}) :
 \"\"\"{tweet['text'][:1500]}\"\"\"
 
-{link_section}RÉSULTATS WEB EXA (contexte : fraîcheur, écho éventuel) :
+{thread_section}{media_section}{link_section}{deep}RÉSULTATS WEB EXA (contexte : fraîcheur, écho éventuel) :
 {evidence}
 
 {link_instruction}{already}Analyse selon le système. Réponds UNIQUEMENT en JSON."""
@@ -1251,16 +1408,10 @@ def mode_chasse(dry_run: bool = False) -> int:
         print(f"[chasse] pépite: @{p['author_handle']} — {p['pourquoi']}")
         if dry_run:
             continue
-        link = fetch_link(p["links"][0]) if p.get("links") else None
-        exa = exa_search(p["text"], with_text=True)
-        brief = llm_brief(p, exa, recent=recent_context(15), link=link)
-        if link and brief:
-            brief.setdefault("sources", [])
-            if link["url"] not in brief["sources"]:
-                brief["sources"].insert(0, link["url"])
+        brief = deep_brief(p, recent=recent_context(15))
         health("brief", bool(brief))
         if brief:
-            send_telegram(p, brief, exa, label="📡 T'as loupé ça")
+            send_telegram(p, brief, label="📡 T'as loupé ça")
             pushed += 1
         time.sleep(2)
     print(f"[chasse] terminé — {pushed} poussée(s) sur {len(candidates)} candidats")
@@ -1509,6 +1660,30 @@ def maybe_reflect() -> None:
 
 # ---------------------------------------------------------------- cycle
 
+def deep_brief(tweet: dict, recent: list[dict] | None = None) -> dict | None:
+    """Pipeline complet d'analyse : lien + parent/cité + image + boucle de
+    recherche par questions + brief. Retourne le brief enrichi (sources y
+    sont ajoutées). None si le LLM a échoué."""
+    link = fetch_link(tweet["links"][0]) if tweet.get("links") else None
+    parent = fetch_parent_tweet(tweet["reply_to"]) if tweet.get("reply_to") else None
+    quoted = tweet.get("quoted")
+    media_desc = analyze_image(tweet["images"][0]) if tweet.get("images") else None
+
+    # boucle itérative : le LLM pose ses doutes, on va chercher les réponses
+    questions = research_questions(tweet, link, parent)
+    extra = research_evidence(questions) if questions else []
+    if questions:
+        print(f"[deep] {len(questions)} question(s) cherchée(s): {questions[:2]}")
+
+    brief = llm_brief(tweet, exa_search(tweet["text"], with_text=True),
+                      recent=recent, link=link, parent=parent, quoted=quoted,
+                      media_desc=media_desc, extra_evidence=extra)
+    if brief and link:
+        brief.setdefault("sources", [])
+        if link["url"] not in brief["sources"]:
+            brief["sources"].insert(0, link["url"])
+    return brief
+
 def process_new(tweets: list[dict], seen: dict, notify: bool) -> int:
     fresh = [t for t in tweets if t["tweet_id"] not in seen]
     fresh = list(reversed(fresh))[:MAX_PER_POLL]
@@ -1525,15 +1700,9 @@ def process_new(tweets: list[dict], seen: dict, notify: bool) -> int:
     for t in fresh:
         if notify:
             print(f"[brief] https://x.com/{t['author_handle'] or 'x'}/status/{t['tweet_id']}")
-            link = fetch_link(t["links"][0]) if t.get("links") else None
-            exa = exa_search(t["text"], with_text=True)
-            brief = llm_brief(t, exa, recent=recent_context(15), link=link)
-            if link:
-                brief.setdefault("sources", [])
-                if link["url"] not in brief["sources"]:
-                    brief["sources"].insert(0, link["url"])
+            brief = deep_brief(t, recent=recent_context(15))
             health("brief", bool(brief))
-            send_telegram(t, brief, exa)
+            send_telegram(t, brief)
             time.sleep(2)
         seen[t["tweet_id"]] = now_iso
         save_json(SEEN_FILE, seen)   # sauvegarde à chaque envoi : pas de re-spam si crash
