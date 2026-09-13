@@ -1066,51 +1066,73 @@ CHASSE_FALLBACK_QUERIES = [
     "devtools CLI min_faves:40",
 ]
 
+def _chromium_executable() -> str | None:
+    """Chromium Playwright installé (version la plus récente)."""
+    import glob
+    cands = sorted(glob.glob(str(Path.home() / ".cache/ms-playwright/chromium-*/chrome-linux*/chrome")),
+                   reverse=True)
+    return cands[0] if cands else None
+
 def chasse_collect(queries: list[str]) -> tuple[list[dict], str | None]:
-    """Exécute les recherches X dans camoufox headless et intercepte les réponses
-    SearchTimeline 200. ⚠️ X bloque le replay HTTP pur de search (404 même en
-    exact-replay des headers capturés) → le navigateur est OBLIGATOIRE ici.
+    """Exécute les recherches X dans un Chromium Playwright (cookies du compte)
+    et intercepte les réponses SearchTimeline 200.
+    ⚠️ Pourquoi PAS camoufox ni HTTP pur :
+      - HTTP pur : X répond 404 corps vide au replay de SearchTimeline (headers
+        capturés d'une vraie réponse 200 compris) — enforcement transaction-id ;
+      - camoufox : son anti-fingerprint produit des transaction-ids invalidés
+        par X (404 aussi, même en vrai navigateur) alors que Chrome passe.
     Retourne (tweets dédupliqués, erreur)."""
     from urllib.parse import quote
-    results: list[dict] = []
+    from playwright.sync_api import sync_playwright
+    session = get_session()
+    if not session.get("cookies"):
+        return [], "pas de session X — `python watcher.py login` puis `refresh`"
+    cookies = [{"name": k, "value": v, "domain": ".x.com", "path": "/"}
+               for k, v in session["cookies"].items()]
+    exe = _chromium_executable()
+    if not exe:
+        return [], "chromium playwright absent — `playwright install chromium`"
+
+    payloads: list[dict] = []
     try:
-        with Camoufox(headless=True, persistent_context=True, user_data_dir=PROFILE_DIR, geoip=True) as ctx:
+        with sync_playwright() as p:
+            b = p.chromium.launch(headless=True, executable_path=exe, args=["--no-sandbox"])
+            ctx = b.new_context(locale="fr-FR")
+            ctx.add_cookies(cookies)
             page = ctx.new_page()
 
             def on_response(response):
-                if "/SearchTimeline" in response.url and getattr(response, "status", 0) == 200:
+                if "/SearchTimeline" in response.url and response.status == 200:
                     try:
-                        results.append(parse_search_payload(response.json()))
+                        payloads.append(response.json())
                     except Exception:
                         pass
 
             page.on("response", on_response)
             page.goto(f"https://x.com/search?q={quote(queries[0])}&f=live",
                       wait_until="domcontentloaded", timeout=90_000)
-            page.wait_for_timeout(6000)
-            # le banner cookies EU bloque la page tant qu'il n'est pas traité
-            for label in ("Refuser les cookies non nécessaires", "Refuse non-essential cookies"):
-                btn = page.get_by_role("button", name=label)
-                if btn.count():
-                    btn.first.click()
-                    page.wait_for_timeout(3000)
-                    break
-            page.wait_for_timeout(4000)
+            page.wait_for_timeout(8000)
             if "/login" in page.url:
-                return [], "session X absente — lance `python watcher.py login`"
+                b.close()
+                return [], "cookies X expirés — `python watcher.py login` puis `refresh`"
             for q in queries[1:]:
-                page.goto(f"https://x.com/search?q={quote(q)}&f=live",
-                          wait_until="domcontentloaded", timeout=60_000)
-                page.wait_for_timeout(8000)
+                try:
+                    page.goto(f"https://x.com/search?q={quote(q)}&f=live",
+                              wait_until="domcontentloaded", timeout=90_000)
+                    page.wait_for_timeout(8000)
+                except Exception as e:
+                    # une recherche lente ne doit pas tuer les suivantes
+                    print(f"[chasse] recherche lente ignorée ({q[:40]!r}: {type(e).__name__})")
+            b.close()
     except Exception as e:
-        if results:
+        if payloads:
             print(f"[chasse] navigateur interrompu en cours ({e}) — résultats partiels")
         else:
             return [], f"navigateur: {e}"
     seen_ids: set[str] = set()
     tweets = []
-    for batch in results:
-        for t in batch:
+    for payload in payloads:
+        for t in parse_search_payload(payload):
             if t["tweet_id"] not in seen_ids:
                 seen_ids.add(t["tweet_id"])
                 tweets.append(t)
@@ -1127,17 +1149,20 @@ def chasse_queries() -> list[str]:
         "opérateurs X autorisés (min_faves:20, OR, lang:en), précises et variées (pas 5 fois la même idée).\n"
         "FORMAT OBLIGATOIRE : d'abord ta réflexion, puis une ligne contenant exactement ---RÉPONSE--- , "
         "puis les 5 requêtes (une par ligne, RIEN d'autre après).",
-        max_tokens=400,
+        max_tokens=800,
     )
     if "---RÉPONSE---" in txt:
         txt = txt.split("---RÉPONSE---", 1)[1]
-    # une requête X : ligne courte sans ponctuation de phrase ni bavardage
-    BAVARD = ("voici", "here", "note", "the ", "these", "ces ", "requêt", "quer")
+    # une requête X : ligne courte sans ponctuation de phrase ni bavardage ;
+    # nemotron numérote souvent ("1. ...") sans mettre le marqueur → strip
+    BAVARD = ("voici", "here", "note", "the ", "these", "ces ", "requêt", "quer",
+              "we need", "we must", "we'll", "let's", "make sure", "add operators", "ensure")
     queries = []
     for l in txt.splitlines():
-        q = l.strip().strip("-•* ").strip('"')
+        q = re.sub(r"^\d+\s*[.)]\s*", "", l.strip())
+        q = q.strip("-•* ").strip('"').strip("'")
         if (not q or q.endswith((".", "!", "?")) or "---" in q
-                or len(q) > 90 or q.lower().startswith(BAVARD)):
+                or len(q) > 110 or q.lower().startswith(BAVARD)):
             continue
         queries.append(q)
     if len(queries) >= 3:
@@ -1209,6 +1234,9 @@ def mode_chasse(dry_run: bool = False) -> int:
     if not candidates:
         print("[chasse] rien de nouveau")
         return 0
+    if dry_run:
+        for t in list(candidates.values())[:15]:
+            print(f"  [cand] @{t['author_handle']} ❤️{t['likes']} — {t['text'][:90]}")
 
     print(f"[chasse] {len(candidates)} candidats → curation")
     picks = chasse_curation(list(candidates.values()))
