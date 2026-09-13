@@ -3,13 +3,13 @@
   "added": "2026-09-09T19:27:40+00:00",
   "last_tag": "v0.2.0",
   "display": "sbom-tool/sbom-tools",
-  "last_checked": "2026-09-09T19:27:51+00:00"
+  "last_checked": "2026-09-11T07:01:08+00:00"
  },
  "cyberwitchery/sbom-diff": {
   "added": "2026-09-09T19:27:40+00:00",
   "last_tag": "v0.8.0",
   "display": "cyberwitchery/sbom-diff",
-  "last_checked": "2026-09-09T19:27:53+00:00"
+  "last_checked": "2026-09-11T07:01:10+00:00"
  },
  "0x4m4/hexstrike-ai": {
   "added": "2026-09-09T19:27:40+00:00",
@@ -20,19 +20,19 @@
   "added": "2026-09-09T19:27:40+00:00",
   "last_tag": "v0.1.1",
   "display": "longweekendprojects/pi-browser-use",
-  "last_checked": "2026-09-09T19:27:54+00:00"
+  "last_checked": "2026-09-11T07:01:11+00:00"
  },
  "browser-use/browsercode": {
   "added": "2026-09-09T19:27:40+00:00",
   "last_tag": "v0.1.20",
   "display": "browser-use/browsercode",
-  "last_checked": "2026-09-09T19:27:55+00:00"
+  "last_checked": "2026-09-11T07:01:12+00:00"
  },
  "celestoai/agentor": {
   "added": "2026-09-09T19:27:40+00:00",
   "last_tag": "v0.1.0",
   "display": "celestoai/agentor",
-  "last_checked": "2026-09-09T19:27:57+00:00"
+  "last_checked": "2026-09-11T07:01:14+00:00"
  },
  "sunblaze-ucb/vero": {
   "added": "2026-09-09T19:27:40+00:00",
@@ -43,5 +43,145 @@
   "added": "2026-09-09T19:27:40+00:00",
   "last_tag": null,
   "display": "scaleapi/vero"
+ },
+ "basecamp/omarchy": {
+  "added": "2026-09-11T07:01:08+00:00",
+  "last_tag": "v4.0.3",
+  "display": "basecamp/omarchy",
+  "last_checked": "2026-09-11T07:01:16+00:00"
+ },
+ "witt3rd/oh-my-hermes": {
+  "added": "2026-09-11T07:01:08+00:00",
+  "last_tag": null,
+  "display": "witt3rd/oh-my-hermes"
+ },
+ "suzam26/oh-my-hermes": {
+  "added": "2026-09-11T07:01:08+00:00",
+  "last_tag": null,
+  "display": "suzam26/oh-my-hermes"
+ },
+ "rlaope/oh-my-hermes": {
+  "added": "2026-09-11T07:01:08+00:00",
+  "last_tag": "v2.0.2",
+  "display": "rlaope/oh-my-hermes",
+  "last_checked": "2026-09-11T07:01:18+00:00"
+ },
+ "microsoft/argusagent": {
+  "added": "2026-09-11T07:01:08+00:00",
+  "last_tag": null,
+  "display": "microsoft/ArgusAgent"
+ },
+ "lbx154/argus": {
+  "added": "2026-09-11T07:01:08+00:00",
+  "last_tag": "v0.1.5",
+  "display": "lbx154/Argus",
+  "last_checked": "2026-09-11T07:01:19+00:00"
+ },
+ "nousresearch/hermes-agent": {
+  "added": "2026-09-11T07:01:08+00:00",
+  "last_tag": "v2026.9.7",
+  "display": "NousResearch/hermes-agent",
+  "last_checked": "2026-09-11T07:01:20+00:00"
+ },
+ "sariraai/second-brain-starter-kit": {
+  "added": "2026-09-11T07:01:08+00:00",
+  "last_tag": null,
+  "display": "sariraai/second-brain-starter-kit"
+ },
+ "kurtvalcorza/agentic-vault": {
+  "added": "2026-09-11T07:01:08+00:00",
+  "last_tag": null,
+  "display": "kurtvalcorza/agentic-vault"
+ },
+ "tonydzi/second-brain-starter-kit": {
+  "added": "2026-09-11T07:01:08+00:00",
+  "last_tag": "v0.3.0",
+  "display": "tonydzi/second-brain-starter-kit",
+  "last_checked": "2026-09-11T07:01:22+00:00"
+ },
+ "epicsagas/secondbrain-template": {
+  "added": "2026-09-11T07:01:08+00:00",
+  "last_tag": null,
+  "display": "epicsagas/SecondBrain-Template"
+ },
+ "mysql/mysql-server": {
+  "added": "2026-09-11T07:01:08+00:00",
+  "last_tag": null,
+  "display": "mysql/mysql-server"
+ },
+ "thomasbek3/hermes-bot-kit": {
+  "added": "2026-09-12T07:49:52+00:00",
+  "last_tag": null,
+  "display": "thomasbek3/hermes-bot-kit"
+ },
+ "kaishi00/hermes-conduit": {
+  "added": "2026-09-12T07:49:52+00:00",
+  "last_tag": null,
+  "display": "kaishi00/hermes-conduit"
+ },
+ "badchars/darknet-mcp-server": {
+  "added": "2026-09-12T07:49:52+00:00",
+  "last_tag": null,
+  "display": "badchars/darknet-mcp-server"
+ },
+ "ashiandd/arsenal-ng": {
+  "added": "2026-09-13T07:01:14+00:00",
+  "last_tag": null,
+  "display": "ashiandd/arsenal-ng"
+ },
+ "ardi-ai-ethical-hacking-cybesecurity/pentest-copilot": {
+  "added": "2026-09-13T07:01:14+00:00",
+  "last_tag": null,
+  "display": "Ardi-ai-Ethical-Hacking-CybeSecurity/pentest-copilot"
+ },
+ "plim-inc/pentest-copilot": {
+  "added": "2026-09-13T07:01:14+00:00",
+  "last_tag": null,
+  "display": "pLim-Inc/pentest-copilot"
+ },
+ "ref0x/arsenal": {
+  "added": "2026-09-13T07:01:14+00:00",
+  "last_tag": null,
+  "display": "ref0x/Arsenal"
+ },
+ "d4ncboz/auto-checkin": {
+  "added": "2026-09-13T07:01:14+00:00",
+  "last_tag": null,
+  "display": "d4ncboz/auto-checkin"
+ },
+ "calesthio/openmontage": {
+  "added": "2026-09-13T07:01:14+00:00",
+  "last_tag": null,
+  "display": "calesthio/OpenMontage"
+ },
+ "krishcalin/autonomous-pen-testing": {
+  "added": "2026-09-13T07:01:14+00:00",
+  "last_tag": null,
+  "display": "Krishcalin/Autonomous-Pen-Testing"
+ },
+ "x-glacier/kali-pentest": {
+  "added": "2026-09-13T07:01:14+00:00",
+  "last_tag": null,
+  "display": "x-glacier/kali-pentest"
+ },
+ "shinmegamiboson/openplanter": {
+  "added": "2026-09-13T07:01:14+00:00",
+  "last_tag": null,
+  "display": "ShinMegamiBoson/OpenPlanter"
+ },
+ "openclaw/openclaw": {
+  "added": "2026-09-13T07:01:14+00:00",
+  "last_tag": null,
+  "display": "openclaw/openclaw"
+ },
+ "lvcabral/brs-desktop": {
+  "added": "2026-09-13T07:01:14+00:00",
+  "last_tag": null,
+  "display": "lvcabral/brs-desktop"
+ },
+ "hkuds/nanobot": {
+  "added": "2026-09-13T07:01:14+00:00",
+  "last_tag": null,
+  "display": "HKUDS/nanobot"
  }
 }

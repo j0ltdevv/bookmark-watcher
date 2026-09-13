@@ -20,13 +20,14 @@ Pipeline par nouveau bookmark :
 
 from __future__ import annotations
 
+import html as html_mod
 import json
 import os
 import re
 import sqlite3
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -36,6 +37,7 @@ BASE = Path(__file__).resolve().parent
 PROFILE_DIR = str(BASE / "x-profile")
 SESSION_FILE = BASE / "session.json"
 SEEN_FILE = BASE / "seen.json"
+CHASSE_SEEN_FILE = BASE / "chasse-seen.json"
 SYSTEM_PROMPT_FILE = BASE / "system-prompt.md"
 MEMORY_DIR = BASE / "memory"
 
@@ -78,6 +80,9 @@ AI_MODEL = CFG.get("AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 POLL_INTERVAL = int(CFG.get("POLL_INTERVAL", "45"))
 MAX_PER_POLL = int(CFG.get("MAX_PER_POLL", "10"))
 MAX_SCROLLS_REFRESH = int(CFG.get("MAX_SCROLLS_REFRESH", "2"))
+CHASSE_INTERVAL = int(CFG.get("CHASSE_INTERVAL", "3600"))   # s entre 2 chasses (0 = désactivé)
+CHASSE_MAX_PUSH = int(CFG.get("CHASSE_MAX_PUSH", "2"))      # max de trouvailles poussées par chasse
+CHASSE_MIN_ENGAGEMENT = int(CFG.get("CHASSE_MIN_ENGAGEMENT", "15"))  # likes+rts min pour être candidat
 
 def load_system_prompt() -> str:
     if SYSTEM_PROMPT_FILE.exists():
@@ -110,17 +115,20 @@ def save_json(path: Path, data) -> None:
 
 def _capture_bookmarks_request(headless: bool) -> dict:
     """Ouvre la page bookmarks dans camoufox, intercepte la requête GraphQL
-    Bookmarks (URL + réponse) et les cookies. Retourne la session complète."""
+    Bookmarks (URL + réponse) et les cookies. Capte aussi SearchTimeline
+    (pour le mode chasse). Retourne la session complète."""
     captured: dict = {}
 
     def on_response(response):
-        if "graphql" in response.url and "/Bookmarks" in response.url:
-            try:
+        if "graphql" not in response.url:
+            return
+        try:
+            if "/Bookmarks" in response.url:
                 captured["url"] = response.url
                 captured["headers"] = dict(response.request.headers)
                 captured["body"] = response.json()
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     with Camoufox(headless=headless, persistent_context=True, user_data_dir=PROFILE_DIR, geoip=True) as ctx:
         page = ctx.new_page()
@@ -183,65 +191,93 @@ def get_session(force_refresh: bool = False) -> dict:
 
 # ---------------------------------------------------------------- parse GraphQL
 
+def _tweets_from_instructions(instructions: list) -> list[dict]:
+    """Extrait les tweets d'une liste d'instructions timeline X (partagé
+    par Bookmarks et SearchTimeline — même structure d'entries)."""
+    out = []
+
+    def walk_entry(entry):
+        content = entry.get("content", {})
+        items = []
+        if content.get("entryType") == "TimelineTimelineItem":
+            items.append(content)
+        elif content.get("entryType") == "TimelineTimelineModule":
+            items.extend(content.get("items", []) or [])
+            items = [i.get("item", {}) for i in items]
+        return items
+
+    for instr in instructions:
+        for entry in instr.get("entries", []) or []:
+            for content in walk_entry(entry):
+                ic = content.get("itemContent", {})
+                if ic.get("itemType") != "TimelineTweet":
+                    continue
+                result = ic.get("tweet_results", {}).get("result", {})
+                if result.get("__typename") == "TweetWithVisibilityResults":
+                    result = result.get("tweet", {})
+                legacy = result.get("legacy", {})
+                tweet_id = legacy.get("id_str") or result.get("rest_id")
+                if not tweet_id:
+                    continue
+                # structure 2026 : user_results.result.core.screen_name
+                # (l'ancien legacy.screen_name reste en fallback)
+                uresult = result.get("core", {}).get("user_results", {}).get("result", {})
+                handle = (
+                    uresult.get("core", {}).get("screen_name")
+                    or uresult.get("legacy", {}).get("screen_name")
+                    or ""
+                )
+                # tweets longs : le texte complet est dans note_tweet
+                note = (
+                    result.get("note_tweet", {}).get("note_tweet_results", {})
+                    .get("result", {}).get("text")
+                )
+                media = legacy.get("extended_entities", {}).get("media", []) or []
+                links = []
+                for u in legacy.get("entities", {}).get("urls", []) or []:
+                    eu = u.get("expanded_url") or ""
+                    if eu.startswith("http") and eu not in links:
+                        links.append(eu)
+                out.append({
+                    "tweet_id": tweet_id,
+                    "text": (note or legacy.get("full_text", "")).strip(),
+                    "author_handle": handle,
+                    "created_at": legacy.get("created_at", ""),
+                    "images": [
+                        m.get("media_url_https") for m in media
+                        if m.get("type") == "photo" and m.get("media_url_https")
+                    ],
+                    "links": links,
+                    # métriques d'engagement (utiles au mode chasse)
+                    "likes": legacy.get("favorite_count", 0),
+                    "rts": legacy.get("retweet_count", 0),
+                    "replies": legacy.get("reply_count", 0),
+                })
+    return out
+
 def parse_bookmarks_payload(payload: dict) -> list[dict]:
     """Extrait les tweets de la réponse GraphQL Bookmarks (formats v1/v2)."""
-    out = []
     try:
         instructions = (
             payload.get("data", {}).get("bookmark_timeline_v2", {})
             .get("timeline", {}).get("instructions", [])
         ) or payload.get("data", {}).get("bookmark_timeline", {}).get("timeline", {}).get("instructions", [])
-
-        def walk_entry(entry):
-            content = entry.get("content", {})
-            items = []
-            if content.get("entryType") == "TimelineTimelineItem":
-                items.append(content)
-            elif content.get("entryType") == "TimelineTimelineModule":
-                items.extend(content.get("items", []) or [])
-                items = [i.get("item", {}) for i in items]
-            return items
-
-        for instr in instructions:
-            for entry in instr.get("entries", []) or []:
-                for content in walk_entry(entry):
-                    ic = content.get("itemContent", {})
-                    if ic.get("itemType") != "TimelineTweet":
-                        continue
-                    result = ic.get("tweet_results", {}).get("result", {})
-                    if result.get("__typename") == "TweetWithVisibilityResults":
-                        result = result.get("tweet", {})
-                    legacy = result.get("legacy", {})
-                    tweet_id = legacy.get("id_str") or result.get("rest_id")
-                    if not tweet_id:
-                        continue
-                    # structure 2026 : user_results.result.core.screen_name
-                    # (l'ancien legacy.screen_name reste en fallback)
-                    uresult = result.get("core", {}).get("user_results", {}).get("result", {})
-                    handle = (
-                        uresult.get("core", {}).get("screen_name")
-                        or uresult.get("legacy", {}).get("screen_name")
-                        or ""
-                    )
-                    # tweets longs : le texte complet est dans note_tweet
-                    note = (
-                        result.get("note_tweet", {}).get("note_tweet_results", {})
-                        .get("result", {}).get("text")
-                    )
-                    media = legacy.get("extended_entities", {}).get("media", []) or []
-                    out.append({
-                        "tweet_id": tweet_id,
-                        "text": (note or legacy.get("full_text", "")).strip(),
-                        "author_handle": handle,
-                        "created_at": legacy.get("created_at", ""),
-                        "images": [
-                            m.get("media_url_https") for m in media
-                            if m.get("type") == "photo" and m.get("media_url_https")
-                        ],
-                    })
+        return _tweets_from_instructions(instructions)
     except Exception as e:
         print(f"[parse] erreur de parsing GraphQL: {e}")
-    return out
+    return []
+
+def parse_search_payload(payload: dict) -> list[dict]:
+    """Extrait les tweets d'une réponse GraphQL SearchTimeline."""
+    try:
+        instructions = (
+            payload.get("data", {}).get("search_by_raw_query", {})
+            .get("search_timeline", {}).get("timeline", {}).get("instructions", [])
+        )
+        return _tweets_from_instructions(instructions)
+    except Exception as e:
+        print(f"[parse] erreur de parsing search: {e}")
+    return []
 
 # ---------------------------------------------------------------- polling
 
@@ -325,6 +361,41 @@ def exa_search(query: str, num_results: int = 4, with_text: bool = False, start_
         print(f"[exa] erreur (non bloquant): {e}")
         return []
 
+def fetch_link(url: str, max_chars: int = 3500) -> dict | None:
+    """Récupère le contenu réel du lien partagé (article, repo, page).
+    Retourne {url, title, text} ou None si inaccessible/non-textuel."""
+    if not url:
+        return None
+    try:
+        r = requests.get(
+            url, timeout=15, allow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+                     "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
+                     "Accept-Language": "fr,en;q=0.8"},
+        )
+        ctype = (r.headers.get("Content-Type") or "").lower()
+        if r.status_code != 200 or ("html" not in ctype and "text" not in ctype and "xml" not in ctype):
+            print(f"[fetch] {url[:80]} -> HTTP {r.status_code} ({ctype[:40] or 'sans type'}) : ignoré")
+            return None
+        # text/* sans charset déclaré : requests part sur ISO-8859-1 → mojibake
+        r.encoding = r.apparent_encoding or "utf-8"
+        html_src = r.text
+        m = re.search(r"<title[^>]*>(.*?)</title>", html_src, re.S | re.I)
+        title = re.sub(r"\s+", " ", html_mod.unescape(m.group(1))).strip() if m else ""
+        # vire scripts/styles/comments, puis les balises, puis compacte
+        html_src = re.sub(r"(?is)<(script|style|noscript|svg|nav|footer)[^>]*>.*?</\1>", " ", html_src)
+        html_src = re.sub(r"(?s)<!--.*?-->", " ", html_src)
+        text = re.sub(r"(?s)<[^>]+>", " ", html_src)
+        text = re.sub(r"\s+", " ", html_mod.unescape(text)).strip()
+        if len(text) < 200:
+            print(f"[fetch] {url[:80]} : page quasi vide ({len(text)} chars) — ignoré")
+            return None
+        print(f"[fetch] OK {url[:80]} ({len(text)} chars, titre: {title[:60]})")
+        return {"url": r.url, "title": title, "text": text[:max_chars]}
+    except Exception as e:
+        print(f"[fetch] échec {url[:80]} : {e}")
+        return None
+
 def _extract_json_object(text: str) -> str | None:
     """Premier objet JSON équilibré du texte (tolère le raisonnement autour).
     String-aware : les accolades entre guillemets ne comptent pas."""
@@ -354,10 +425,22 @@ def _extract_json_object(text: str) -> str | None:
                     return text[start:i + 1]
     return None
 
-def llm_brief(tweet: dict, exa_results: list[dict], recent: list[dict] | None = None) -> dict:
+def llm_brief(tweet: dict, exa_results: list[dict], recent: list[dict] | None = None, link: dict | None = None) -> dict:
     evidence = "\n".join(
         f"- {r['title']} ({r['date'] or 'date inconnue'}) {r['url']}" for r in exa_results
     ) or "(aucun résultat web)"
+    link_section = ""
+    link_instruction = ""
+    if link:
+        link_section = (f"CONTENU RÉEL DU LIEN PARTAGÉ (fetched, source primaire) — « {link['title']} » :\n"
+                        f"\"\"\"{link['text']}\"\"\"\n\n"
+                        "VERIFICATION OBLIGATOIRE : confronte ce contenu aux claims du tweet. Champ "
+                        f"\"verification\" : \"ok\" (le lien tient les claims) | \"decalage\" (le lien dit "
+                        "autre chose / moins que le tweet) | \"inaccessible\" (vide ou hors-sujet). "
+                        "Plus champ \"verification_note\": 1 phrase factuelle appuyée sur le CONTENU (pas le tweet).\n\n")
+    else:
+        link_instruction = ('Pas de contenu de lien récupérable : champ "verification": "inaccessible", '
+                            '"verification_note": raison courte. Ne présente JAMAIS les résultats Exa comme si tu avais lu la source.\n\n')
     author = tweet["author_handle"] or "inconnu"
     already = ""
     if recent:
@@ -373,10 +456,10 @@ def llm_brief(tweet: dict, exa_results: list[dict], recent: list[dict] | None = 
     user_msg = f"""TWEET de @{author} (posté {tweet['created_at'] or 'date inconnue'}) :
 \"\"\"{tweet['text'][:1500]}\"\"\"
 
-RÉSULTATS WEB EXA (contexte : fraîcheur, écho éventuel) :
+{link_section}RÉSULTATS WEB EXA (contexte : fraîcheur, écho éventuel) :
 {evidence}
 
-{already}Analyse selon le système. Réponds UNIQUEMENT en JSON."""
+{link_instruction}{already}Analyse selon le système. Réponds UNIQUEMENT en JSON."""
     last_err = None
     for attempt in range(4):   # NIM renvoie des rafales de 503 — retry avec backoff
         try:
@@ -399,6 +482,11 @@ RÉSULTATS WEB EXA (contexte : fraîcheur, écho éventuel) :
             verdict = str(brief.get("verdict", "")).strip().upper().replace(" ", "_")
             if verdict not in VERDICT_LABEL:
                 verdict = "GAME_CHANGER" if "GAME" in verdict else "MOYEN"
+            # verification : valeur imposée si le modèle n'a pas coopéré
+            verif = str(brief.get("verification", "")).strip().lower()
+            if verif not in ("ok", "decalage", "inaccessible"):
+                brief["verification"] = "inaccessible"
+                brief.setdefault("verification_note", "vérification indisponible")
             brief["verdict"] = verdict
             return brief
         except Exception as e:
@@ -423,7 +511,7 @@ def _bullets(value, icon="•") -> list[str]:
         return [f"  {icon} {value.strip()}"]
     return []
 
-def send_telegram(tweet: dict, brief: dict, exa_results: list[dict] | None = None) -> int | None:
+def send_telegram(tweet: dict, brief: dict, exa_results: list[dict] | None = None, label: str = "Bookmark") -> int | None:
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("[telegram] token/chat_id manquants — message non envoyé")
         return None
@@ -433,10 +521,17 @@ def send_telegram(tweet: dict, brief: dict, exa_results: list[dict] | None = Non
     esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     excerpt = esc(tweet["text"][:280])
 
-    lines = [f"🐦 <a href=\"{url}\">Bookmark</a> — @{author}", ""]
+    lines = [f"{label} <a href=\"{url}\">— @{author}</a>", ""]
     if excerpt:
         lines += [f"<i>« {excerpt}… »</i>", ""]
     lines.append(f"<b>{verdict}</b>")
+
+    verif = str(brief.get("verification", "")).lower()
+    vnote = esc(str(brief.get("verification_note", "")).strip())
+    VERIF_BADGE = {"ok": "✅ Source vérifiée", "decalage": "⚠️ Décalage tweet/source",
+                   "inaccessible": "❓ Source non vérifiée"}
+    if verif in VERIF_BADGE:
+        lines.append(f"\n{VERIF_BADGE[verif]}" + (f" — {vnote}" if vnote else ""))
 
     dj = brief.get("dejavu")
     if isinstance(dj, dict) and dj.get("ref"):
@@ -661,6 +756,20 @@ def ask_and_send(question: str, records: list[dict], chat_id, context_note: str 
     print(f"[ask] {question[:60]}")
     web = exa_search(f"{question} {(records[0]['text'][:150] if records else search_extra)[:200]}",
                      num_results=6, with_text=True)
+    # deep dive : on lit aussi la source primaire du tweet concerné, pas que les résultats Exa
+    if records and question.startswith(("Deep dive", "Fais le parallèle")):
+        src_url = ""
+        for s in (records[0].get("sources") or []):
+            src_url = s.get("url", "") if isinstance(s, dict) else s
+            if src_url:
+                break
+        if not src_url and records[0].get("links"):
+            src_url = records[0]["links"][0]
+        if src_url:
+            page = fetch_link(src_url, max_chars=5000)
+            if page:
+                web = [{"title": f"SOURCE PRIMAIRE du tweet : {page['title']}", "url": page["url"],
+                        "date": "", "text": page["text"]}] + web
     answer = llm_answer(q_full, records, web)
     esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     html = lambda s: re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", esc(s))
@@ -880,7 +989,7 @@ def check_watchlist() -> int:
 
 # ---------------------------------------------------------------- santé / auto-surveillance
 
-_HEALTH = {"poll": 0, "brief": 0, "siftly": 0, "obsidian": 0}
+_HEALTH = {"poll": 0, "brief": 0, "siftly": 0, "obsidian": 0, "chasse": 0}
 _ALERTED: set[str] = set()
 HEALTH_THRESHOLD = 3
 HEALTH_LABEL = {
@@ -888,6 +997,7 @@ HEALTH_LABEL = {
     "brief": "les briefs LLM échouent (proxy/NIM down ?)",
     "siftly": "l'import vers Siftly échoue",
     "obsidian": "l'export Obsidian échoue",
+    "chasse": "les chasses X échouent (SearchTimeline refusée ? relance `refresh`)",
 }
 
 def health(key: str, ok: bool) -> None:
@@ -945,6 +1055,188 @@ def _llm_text(prompt: str, max_tokens: int = 1500) -> str:
                 print(f"[llm] échec: {e}")
             time.sleep((attempt + 1) * 4)
     return ""
+
+# ---------------------------------------------------------------- chasse (veille proactive X)
+
+CHASSE_FALLBACK_QUERIES = [
+    "AI agents open source min_faves:50",
+    "cybersecurity 0day OR exploit lang:en min_faves:30",
+    "local LLM tools min_faves:30",
+    "pentest OR redteam tool lang:en min_faves:20",
+    "devtools CLI min_faves:40",
+]
+
+def chasse_collect(queries: list[str]) -> tuple[list[dict], str | None]:
+    """Exécute les recherches X dans camoufox headless et intercepte les réponses
+    SearchTimeline 200. ⚠️ X bloque le replay HTTP pur de search (404 même en
+    exact-replay des headers capturés) → le navigateur est OBLIGATOIRE ici.
+    Retourne (tweets dédupliqués, erreur)."""
+    from urllib.parse import quote
+    results: list[dict] = []
+    try:
+        with Camoufox(headless=True, persistent_context=True, user_data_dir=PROFILE_DIR, geoip=True) as ctx:
+            page = ctx.new_page()
+
+            def on_response(response):
+                if "/SearchTimeline" in response.url and getattr(response, "status", 0) == 200:
+                    try:
+                        results.append(parse_search_payload(response.json()))
+                    except Exception:
+                        pass
+
+            page.on("response", on_response)
+            page.goto(f"https://x.com/search?q={quote(queries[0])}&f=live",
+                      wait_until="domcontentloaded", timeout=90_000)
+            page.wait_for_timeout(6000)
+            # le banner cookies EU bloque la page tant qu'il n'est pas traité
+            for label in ("Refuser les cookies non nécessaires", "Refuse non-essential cookies"):
+                btn = page.get_by_role("button", name=label)
+                if btn.count():
+                    btn.first.click()
+                    page.wait_for_timeout(3000)
+                    break
+            page.wait_for_timeout(4000)
+            if "/login" in page.url:
+                return [], "session X absente — lance `python watcher.py login`"
+            for q in queries[1:]:
+                page.goto(f"https://x.com/search?q={quote(q)}&f=live",
+                          wait_until="domcontentloaded", timeout=60_000)
+                page.wait_for_timeout(8000)
+    except Exception as e:
+        if results:
+            print(f"[chasse] navigateur interrompu en cours ({e}) — résultats partiels")
+        else:
+            return [], f"navigateur: {e}"
+    seen_ids: set[str] = set()
+    tweets = []
+    for batch in results:
+        for t in batch:
+            if t["tweet_id"] not in seen_ids:
+                seen_ids.add(t["tweet_id"])
+                tweets.append(t)
+    return tweets, None
+
+def chasse_queries() -> list[str]:
+    """5 requêtes de recherche générées par le LLM depuis la mémoire + sujets récents."""
+    recent = "\n".join(f"- @{r['author']}: {r['text'][:80]}" for r in recent_context(10))
+    txt = _llm_text(
+        "Génère 5 requêtes de recherche X (Twitter) pour trouver des tweets des dernières 48 h "
+        "que cet utilisateur risque d'avoir ratés et qui l'intéresseraient à coup sûr.\n"
+        f"Ses sujets récents :\n{recent}\n\n"
+        "Règles : une requête par ligne, sans numérotation ni guillemets, plutôt en anglais, "
+        "opérateurs X autorisés (min_faves:20, OR, lang:en), précises et variées (pas 5 fois la même idée).\n"
+        "FORMAT OBLIGATOIRE : d'abord ta réflexion, puis une ligne contenant exactement ---RÉPONSE--- , "
+        "puis les 5 requêtes (une par ligne, RIEN d'autre après).",
+        max_tokens=400,
+    )
+    if "---RÉPONSE---" in txt:
+        txt = txt.split("---RÉPONSE---", 1)[1]
+    # une requête X : ligne courte sans ponctuation de phrase ni bavardage
+    BAVARD = ("voici", "here", "note", "the ", "these", "ces ", "requêt", "quer")
+    queries = []
+    for l in txt.splitlines():
+        q = l.strip().strip("-•* ").strip('"')
+        if (not q or q.endswith((".", "!", "?")) or "---" in q
+                or len(q) > 90 or q.lower().startswith(BAVARD)):
+            continue
+        queries.append(q)
+    if len(queries) >= 3:
+        return queries[:5]
+    print("[chasse] génération LLM insuffisante — requêtes de secours")
+    return CHASSE_FALLBACK_QUERIES
+
+def chasse_curation(candidates: list[dict]) -> list[dict]:
+    """Le LLM choisit 0 à CHASSE_MAX_PUSH trouvailles vraiment exceptionnelles."""
+    lines = []
+    for i, t in enumerate(candidates[:40]):
+        lines.append(f"[{i}] @{t['author_handle']} ❤️{t['likes']} 🔁{t['rts']} — {t['text'][:200]}")
+    txt = _llm_text(
+        "Voici des tweets trouvés par recherche X, tous des dernières 48 h. L'utilisateur est expert "
+        "cybersécurité (ex-ANSSI), dev, full-automatisation, IA locale. Il n'a PAS vu ces tweets.\n\n"
+        + "\n".join(lines)
+        + f"\n\nSélectionne au MAXIMUM {CHASSE_MAX_PUSH} tweets VRAIMENT exceptionnels pour lui : "
+        "outil révolutionnaire, vulnérabilité majeure, révélation qui va faire du bruit dans son domaine. "
+        "Zéro hype creuse, zéro recycle. Si rien ne mérite, sélectionne RIEN — c'est une réponse valide.\n"
+        'Réponds UNIQUEMENT en JSON : {"picks": [{"idx": <numéro>, "pourquoi": "1 phrase"}]}',
+        max_tokens=600,
+    )
+    m = _extract_json_object(txt)
+    if not m:
+        return []
+    try:
+        picks = json.loads(m).get("picks", [])
+    except json.JSONDecodeError:
+        return []
+    out = []
+    for p in picks:
+        try:
+            idx = int(p.get("idx"))
+            t = candidates[idx]
+            out.append({**t, "pourquoi": str(p.get("pourquoi", ""))[:200]})
+        except (ValueError, IndexError, KeyError):
+            continue
+    return out[:CHASSE_MAX_PUSH]
+
+def mode_chasse(dry_run: bool = False) -> int:
+    """Cherche sur X ce que l'utilisateur a raté, filtre fort, pousse les pépites.
+    Retourne le nombre de trouvailles poussées (ou -1 en échec dur)."""
+    queries = chasse_queries()
+    print(f"[chasse] requêtes: {queries}")
+    seen = load_json(CHASSE_SEEN_FILE, {})
+    bookmarked = load_json(SEEN_FILE, {})   # ne jamais re-proposer ce qu'il a déjà bookmarké
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+
+    tweets, err = chasse_collect(queries)
+    if err:
+        print(f"[chasse] {err}")
+        return -1
+    candidates: dict[str, dict] = {}
+    for t in tweets:
+        tid = t["tweet_id"]
+        if tid in seen or tid in bookmarked:
+            continue
+        try:
+            if datetime.strptime(t["created_at"], "%a %b %d %H:%M:%S %z %Y") < cutoff:
+                continue
+        except ValueError:
+            pass
+        if (t.get("likes", 0) + t.get("rts", 0)) < CHASSE_MIN_ENGAGEMENT:
+            continue
+        if not t["text"]:
+            continue
+        candidates[tid] = t
+    print(f"[chasse] {len(tweets)} tweets vus, {len(candidates)} candidats (48 h, engagement ≥ {CHASSE_MIN_ENGAGEMENT})")
+    if not candidates:
+        print("[chasse] rien de nouveau")
+        return 0
+
+    print(f"[chasse] {len(candidates)} candidats → curation")
+    picks = chasse_curation(list(candidates.values()))
+    # tout le pool examiné est marqué vu : pas de re-curation à chaque cycle
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    if not dry_run:
+        seen.update({tid: now_iso for tid in candidates})
+        save_json(CHASSE_SEEN_FILE, seen)
+
+    pushed = 0
+    for p in picks:
+        print(f"[chasse] pépite: @{p['author_handle']} — {p['pourquoi']}")
+        if dry_run:
+            continue
+        link = fetch_link(p["links"][0]) if p.get("links") else None
+        exa = exa_search(p["text"], with_text=True)
+        brief = llm_brief(p, exa, recent=recent_context(15), link=link)
+        if link and brief:
+            brief.setdefault("sources", [])
+            if link["url"] not in brief["sources"]:
+                brief["sources"].insert(0, link["url"])
+        health("brief", bool(brief))
+        if brief:
+            send_telegram(p, brief, exa, label="📡 T'as loupé ça")
+            pushed += 1
+        time.sleep(2)
+    print(f"[chasse] terminé — {pushed} poussée(s) sur {len(candidates)} candidats")
+    return pushed
 
 def mode_digest() -> None:
     recs = _records_last_24h()
@@ -1077,12 +1369,28 @@ def mode_weekly() -> None:
 
 _WHISPER = None
 def transcribe_voice(ogg_path: str) -> str:
-    """Transcrit un vocal avec faster-whisper (modèle chargé au premier usage)."""
+    """Transcrit un vocal : Groq whisper d'abord, faster-whisper local en secours."""
+    groq_key = CFG.get("GROQ_API_KEY", "")
+    if groq_key:
+        try:
+            with open(ogg_path, "rb") as f:
+                r = requests.post(
+                    "https://api.groq.com/openai/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {groq_key}"},
+                    files={"file": (os.path.basename(ogg_path), f, "audio/ogg")},
+                    data={"model": "whisper-large-v3-turbo", "language": "fr"},
+                    timeout=60,
+                )
+            if r.ok and r.json().get("text", "").strip():
+                return r.json()["text"].strip()
+            print(f"[voice] groq HTTP {r.status_code}, bascule local")
+        except Exception as e:
+            print(f"[voice] groq échoué ({e}), bascule local")
     global _WHISPER
     if _WHISPER is None:
         print("[voice] chargement du modèle whisper (première fois)…")
         from faster_whisper import WhisperModel
-        _WHISPER = WhisperModel("small", device="cpu", compute_type="int8")
+        _WHISPER = WhisperModel("base", device="cpu", compute_type="int8")
     segments, _ = _WHISPER.transcribe(ogg_path, language="fr", beam_size=1)
     return " ".join(s.text.strip() for s in segments).strip()
 
@@ -1189,8 +1497,13 @@ def process_new(tweets: list[dict], seen: dict, notify: bool) -> int:
     for t in fresh:
         if notify:
             print(f"[brief] https://x.com/{t['author_handle'] or 'x'}/status/{t['tweet_id']}")
-            exa = exa_search(t["text"])
-            brief = llm_brief(t, exa, recent=recent_context(15))
+            link = fetch_link(t["links"][0]) if t.get("links") else None
+            exa = exa_search(t["text"], with_text=True)
+            brief = llm_brief(t, exa, recent=recent_context(15), link=link)
+            if link:
+                brief.setdefault("sources", [])
+                if link["url"] not in brief["sources"]:
+                    brief["sources"].insert(0, link["url"])
             health("brief", bool(brief))
             send_telegram(t, brief, exa)
             time.sleep(2)
@@ -1245,15 +1558,24 @@ def main() -> None:
         print(f"[baseline] {n} tweets marqués vus")
     elif mode == "weekly":
         mode_weekly()
+    elif mode == "chasse":
+        n = mode_chasse()
+        print(f"[chasse] {n} trouvaille(s) poussée(s)")
+    elif mode == "chasse-dry":
+        n = mode_chasse(dry_run=True)
+        print(f"[chasse-dry] {n} trouvaille(s) sélectionnée(s) (rien envoyé)")
     elif mode == "digest":
         mode_digest()
     elif mode == "morning":
         mode_morning()
     elif mode == "daemon":
         import threading
-        print(f"[daemon] démarré — poll HTTP toutes les {POLL_INTERVAL}s")
+        print(f"[daemon] démarré — poll HTTP toutes les {POLL_INTERVAL}s"
+              + (f", chasse toutes les {CHASSE_INTERVAL}s" if CHASSE_INTERVAL else ", chasse désactivée"))
         threading.Thread(target=telegram_listener, daemon=True).start()
         pending_export = False
+        # première chasse ~5 min après le boot (les redémarrages en rafale ne spamment pas)
+        last_chasse = time.time() - CHASSE_INTERVAL + 300 if CHASSE_INTERVAL else 0
         while True:
             try:
                 n = poll_cycle(notify=True)
@@ -1266,6 +1588,13 @@ def main() -> None:
                     pending_export = False
                 if n > 0:
                     pending_export = True
+                if CHASSE_INTERVAL and time.time() - last_chasse >= CHASSE_INTERVAL:
+                    last_chasse = time.time()
+                    try:
+                        health("chasse", mode_chasse() >= 0)
+                    except Exception as e:
+                        print(f"[daemon] erreur chasse: {e}")
+                        health("chasse", False)
             except KeyboardInterrupt:
                 raise
             except Exception as e:

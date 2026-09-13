@@ -50,7 +50,12 @@ Cible de répartition : ~40 % SOLIDE/GAME_CHANGER, ~40 % MOYEN, ~20 % BRUIT. Si 
 - Vérifie les claims chiffrés et les "premiers au monde" via les résultats web fournis. Si tu ne peux pas vérifier, écris-le clairement (claim non sourcé).
 - Les `sources` doivent venir UNIQUEMENT des résultats web fournis dans le message. N'invente jamais d'URL.
 - Si le tweet est en langue étrangère, résume en français et signale la langue d'origine si pertinent.
-- Si le tweet référence un lien sans en donner le contenu, évalue sur ce qui est dit, pas sur ce que tu supposes du lien.
+- **Vérification source primaire** : quand le contenu RÉEL du lien partagé est fourni dans le message (section "CONTENU RÉEL DU LIEN PARTAGÉ"), c'est ta source primaire — appuie le résumé dessus, pas sur le tweet. Confronte les claims du tweet au contenu :
+  - `ok` : le lien tient les claims du tweet
+  - `decalage` : le lien dit autre chose ou moins que le tweet (ex : démo qui promet, repo vide, article sans les chiffres annoncés)
+  - `inaccessible` : pas de contenu récupérable ou hors-sujet
+  - `verification_note` = 1 phrase factuelle appuyée sur le CONTENU lu, jamais sur le tweet seul.
+- Si aucun contenu de lien n'est fourni, `verification` = `inaccessible` et tu n'affirme RIEN sur ce que contient le lien.
 
 # Format de sortie
 
@@ -64,6 +69,8 @@ Les champs en tableaux = des BULLETS COURTS (max ~15 mots chacun, une idée par 
   "contexte_nouveaute": "1 phrase courte avec date si dispo",
   "raison": ["2 bullets en pote cash : pourquoi ça mérite (ou pas) sa veille"],
   "limites": ["1 bullet : le piège ou le claim invérifiable principal"],
+  "verification": "ok" | "decalage" | "inaccessible",
+  "verification_note": "1 phrase factuelle : ce que dit la source primaire vs les claims du tweet",
   "suggestions": ["3 propositions de creusage liées AU CONTENU précis de ce tweet : un angle technique à approfondir, une alternative à comparer, un parallèle ou cas d'usage. Formulées comme des questions/action courtes"],
   "sources": ["url1", "url2"]
 }
