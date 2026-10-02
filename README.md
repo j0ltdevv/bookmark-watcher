@@ -40,6 +40,7 @@ systemctl --user enable --now bookmark-watcher.service
 | `MAX_PER_POLL` | 10 | nouveaux bookmarks traités par cycle (anti-rafales) |
 | `AI_MODEL` | nemotron-3-super | modèle NIM pour le brief |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | — | sans eux, tout tourne mais rien n'est envoyé |
+| `OPENMAUSBOT_WEBHOOK_URL` | — | webhook ingress OpenMausBot (`http://127.0.0.1:8800/hooks/wh_xxx/secret`) : chaque brief y est aussi poussé en Markdown, pour les résumés + discussion dans OpenMausBot |
 
 ## Dépannage
 
