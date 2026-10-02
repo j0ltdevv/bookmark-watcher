@@ -6,7 +6,7 @@ After=siftly.service nvidia-claude-proxy.service
 [Service]
 Type=simple
 WorkingDirectory=%h/Documents/Default Project/bookmark-watcher
-ExecStart=%h/Documents/Default Project/bookmark-watcher/venv/bin/python watcher.py daemon
+ExecStart="%h/Documents/Default Project/bookmark-watcher/venv/bin/python" -u "%h/Documents/Default Project/bookmark-watcher/watcher.py" daemon
 Restart=on-failure
 RestartSec=30
 

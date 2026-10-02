@@ -73,6 +73,7 @@ def load_env() -> dict:
 CFG = load_env()
 TELEGRAM_BOT_TOKEN = CFG.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = CFG.get("TELEGRAM_CHAT_ID", "")
+OPENMAUSBOT_WEBHOOK_URL = CFG.get("OPENMAUSBOT_WEBHOOK_URL", "")
 SIFTLY_URL = CFG.get("SIFTLY_URL", "http://localhost:3000")
 PROXY_URL = CFG.get("PROXY_URL", "http://localhost:8089")
 PROXY_API_KEY = CFG.get("PROXY_API_KEY", "optional-server-key-for-proxy-auth")
@@ -750,6 +751,66 @@ def send_telegram(tweet: dict, brief: dict, exa_results: list[dict] | None = Non
         print(f"[telegram] échec: {e}")
         return None
 
+def push_to_openmausbot(tweet: dict, brief: dict | None, label: str = "Bookmark") -> bool:
+    """Pousse un brief vers OpenMausBot via webhook ingress (POST {"text": md}).
+    No-op si OPENMAUSBOT_WEBHOOK_URL n'est pas configurée. Ne lève jamais :
+    le canal Telegram reste prioritaire et indépendant."""
+    if not OPENMAUSBOT_WEBHOOK_URL:
+        return False
+    if not brief:
+        return False
+    try:
+        author = tweet.get("author_handle") or "x"
+        url = f"https://x.com/{author}/status/{tweet.get('tweet_id')}"
+        verdict = VERDICT_LABEL.get(brief.get("verdict", ""), str(brief.get("verdict", "?")))
+        excerpt = (tweet.get("text") or "")[:280]
+
+        lines = [f"## {label} — @{author}", "", f"[Voir le tweet]({url})", ""]
+        if excerpt:
+            lines += [f"> {excerpt}…", ""]
+        lines.append(f"**{verdict}**")
+        verif = str(brief.get("verification", "")).lower()
+        VERIF_BADGE_MD = {"ok": "✅ Source vérifiée", "decalage": "⚠️ Décalage tweet/source",
+                          "inaccessible": "❓ Source non vérifiée"}
+        vnote = str(brief.get("verification_note", "")).strip()
+        if verif in VERIF_BADGE_MD:
+            lines.append(f"\n{VERIF_BADGE_MD[verif]}" + (f" — {vnote}" if vnote else ""))
+        dj = brief.get("dejavu")
+        if isinstance(dj, dict) and dj.get("ref"):
+            lines.append(f"\n🍲 **Déjà vu** — {dj.get('ref', '')} : {dj.get('note', '')}")
+        resume = _bullets(brief.get("resume"))
+        if resume:
+            lines.append("\n**🎯 C'est quoi**")
+            lines += [f"- {b.lstrip(' •')}" for b in resume]
+        if brief.get("nouveaute"):
+            lines.append(f"\n🆕 **{brief['nouveaute']}** — {brief.get('contexte_nouveaute', '')}")
+        raison = _bullets(brief.get("raison"))
+        if raison:
+            lines.append("\n**💡 Ce qu'elle vaut**")
+            lines += [f"- {b.lstrip(' •')}" for b in raison]
+        limites = _bullets(brief.get("limites"))
+        if limites:
+            lines.append("\n**⚠️ Limites**")
+            lines += [f"- {b.lstrip(' •')}" for b in limites]
+        srcs = [s for s in (brief.get("sources") or []) if isinstance(s, str)][:3]
+        if srcs:
+            lines += ["", "Sources : " + " · ".join(f"[lien]({s})" for s in srcs)]
+        suggestions = [str(s).strip() for s in (brief.get("suggestions") or []) if str(s).strip()][:3]
+        if suggestions:
+            lines.append("\n**👉 Pour creuser**")
+            lines += [f"- {s}" for s in suggestions]
+
+        msg = "\n".join(lines)[:15000]
+        r = requests.post(OPENMAUSBOT_WEBHOOK_URL, json={"text": msg}, timeout=20)
+        if not r.ok:
+            print(f"[openmausbot] erreur {r.status_code}: {r.text[:200]}")
+            return False
+        print(f"[openmausbot] brief poussé ({url})")
+        return True
+    except Exception as e:
+        print(f"[openmausbot] échec: {e}")
+        return False
+
 # ---------------------------------------------------------------- contexte conversationnel
 
 BOT_CONTEXT_FILE = BASE / "bot-context.json"
@@ -1412,6 +1473,7 @@ def mode_chasse(dry_run: bool = False) -> int:
         health("brief", bool(brief))
         if brief:
             send_telegram(p, brief, label="📡 T'as loupé ça")
+            push_to_openmausbot(p, brief, label="📡 T'as loupé ça")
             pushed += 1
         time.sleep(2)
     print(f"[chasse] terminé — {pushed} poussée(s) sur {len(candidates)} candidats")
@@ -1703,6 +1765,7 @@ def process_new(tweets: list[dict], seen: dict, notify: bool) -> int:
             brief = deep_brief(t, recent=recent_context(15))
             health("brief", bool(brief))
             send_telegram(t, brief)
+            push_to_openmausbot(t, brief)
             time.sleep(2)
         seen[t["tweet_id"]] = now_iso
         save_json(SEEN_FILE, seen)   # sauvegarde à chaque envoi : pas de re-spam si crash
