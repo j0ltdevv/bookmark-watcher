@@ -699,6 +699,9 @@ def send_telegram(tweet: dict, brief: dict, exa_results: list[dict] | None = Non
     if resume:
         lines.append("\n<b>🎯 C'est quoi</b>")
         lines += [esc(b) for b in resume]
+    angle = str(brief.get("angle") or "").strip()
+    if angle:
+        lines.append(f"\n<i>{esc(angle)}</i>")
     if brief.get("nouveaute"):
         lines.append(f"\n🆕 <b>{esc(brief['nouveaute'])}</b> — {esc(brief.get('contexte_nouveaute', ''))}")
     raison = _bullets(brief.get("raison"))
@@ -782,6 +785,9 @@ def push_to_openmausbot(tweet: dict, brief: dict | None, label: str = "Bookmark"
         if resume:
             lines.append("\n**🎯 C'est quoi**")
             lines += [f"- {b.lstrip(' •')}" for b in resume]
+        angle = str(brief.get("angle") or "").strip()
+        if angle:
+            lines.append(f"\n_{angle}_")
         if brief.get("nouveaute"):
             lines.append(f"\n🆕 **{brief['nouveaute']}** — {brief.get('contexte_nouveaute', '')}")
         raison = _bullets(brief.get("raison"))
