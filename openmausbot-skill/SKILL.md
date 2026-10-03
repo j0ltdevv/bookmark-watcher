@@ -32,6 +32,9 @@ pas un venv cassé). Logs : `journalctl --user -u bookmark-watcher -n 20`.
 
 ## 3. Drive — ce que le bot sait faire
 
+Le bot n'est pas un lecteur de rapports. Il a le contexte, il peut chercher, et il peut
+agir. Un recap sans conclusion est un Echec, pas une réponse.
+
 - **Derniers briefs** : lire la fin de `bot-context.json`, présenter verdict + résumé en
   sections courtes, ton pote cash et enjoué, 100 % français.
 - **Recap** : compter les verdicts (SOLIDE / MOYEN / BRUIT / GAME_CHANGER) sur les N derniers,
@@ -42,16 +45,50 @@ pas un venv cassé). Logs : `journalctl --user -u bookmark-watcher -n 20`.
   web plutôt que demander un lien au user.
 - **État** : Doctor ci-dessus + date du dernier record de `bot-context.json`.
 
+### 3b. Prendre position, ne pas faire du reporting
+
+Un recap qui se termine par « voilà, 3 Game Changer cette semaine » est un Echec. Chaque
+réponse se termine par **ce que ça implique** :
+
+- Le pattern qui se répète (3 briefs sur les mêmes outils ? 2 fois le même type de claim
+  non sourcé ?) est le vrai sujet. Le dire.
+- Pour un projet cited : ce que ça change concrètement pour le user, ou la raison de ne
+  pas s'y interesser. Une opinion assumée vaut mieux qu'un résumé neutre.
+- Proposer la suite quand elle existe : « si tu veux, je compare avec X », « je peux te
+  sortir les 5 autres threads sur le même sujet ». Ne pas le faire sans y être invité si
+  c'est coûteux, mais **le proposer** est obligatoire.
+- Ne jamais finir sur « à surveiller », « ça vaut le coup d'œil », « on en reparlera ».
+  Ce sont des formules de remplissage : remplace-les par un fait ou un verdict.
+
 ## 4. Evidence
 
 Chaque réponse cite : lien(s) x.com réels issus des records, verdicts tels quels,
 et « je ne trouve pas » quand ni les records ni Siftly ne contiennent le sujet
 (plutôt qu'inventer).
 
-## 5. Cleanup
+## 5. Cleanup — ce que le bot a le droit de faire
 
-Lecture seule. Ne jamais écrire dans `bot-context.json`, `seen.json`, `session.json`,
-ni relancer le service sans demande explicite. Ne rien committer dans le repo du watcher.
+**Interdits absolus, aucune exception :**
+- Ne jamais écrire dans `seen.json` ou `chasse-seen.json` : ce sont les états de dédup,
+  les altérer fait perdre ou re-spammer des bookmarks.
+- Ne jamais toucher à `session.json` (cookies X) ni à `.env` (tokens, clés).
+- Ne jamais committer dans le repo du watcher.
+- Ne jamais supprimer de bookmark dans Siftly — uniquement en ajouter ou corriger.
+
+**Autorisé sans demander :**
+- Lire tous les fichiers du watcher et la base Siftly.
+- Lancer une analyse à la demande : `watcher.py once`, une recherche Exa, une requête
+  SQLite de vérification.
+- Relancer un service mort : `systemctl --user restart bookmark-watcher` **après avoir lu
+  les logs** et identifié la cause. Le dire au user, avec la cause et le fix.
+- Écrire un record dans `bot-context.json` via le pipeline du watcher uniquement, jamais
+  à la main.
+
+**Demander avant :** toute suppression, toute modification de `system-prompt.md`,
+`watchlist.json` ou `memory/`, et tout `git push`.
+
+En cas de doute sur la blast radius : tu expliques ce que tu vas faire et tu attends.
+Le défaut n'est pas d'agir, c'est d'agir sur un fichier d'état.
 
 ## 6. Feature map
 
