@@ -754,8 +754,32 @@ def send_telegram(tweet: dict, brief: dict, exa_results: list[dict] | None = Non
         print(f"[telegram] échec: {e}")
         return None
 
+WEBHOOK_TASK = """Voici un bookmark X que j'ai analyse. Utilise le skill `bookmark-watcher` \
+pour le ton, le format et les sources de verite.
+
+Ce que j'attends de ta reponse, en francais, 4 a 8 lignes :
+1. Un commentaire direct sur le fond, comme un pote qui vient de lire le truc. \
+Pas un resume du payload.
+2. UN detail que je n'ai pas dans le resume : ce qui est verifie, ce qui ne l'est \
+pas, ou ce que ca change concretement pour moi.
+3. Une fin qui propose quelque chose de concret : une comparaison, un test a lancer, \
+un angle a creuser.
+
+Si le verdict est MOYEN ou BRUIT, dis-le cash. Ne gonfle jamais le verdict pour etre \
+gentil. Jamais de "a surveiller" ni de "ca vaut le coup d'oeil".
+
+Le brief :
+---
+{payload}
+---"""
+
+
 def push_to_openmausbot(tweet: dict, brief: dict | None, label: str = "Bookmark") -> bool:
-    """Pousse un brief vers OpenMausBot via webhook ingress (POST {"text": md}).
+    """Pousse un brief vers OpenMausBot via webhook ingress.
+
+    Le champ `task` est ce que l'app lit (`parsed.data.task ?? parsed.data.message`) :
+    c'est l'instruction du tour. Le champ `text` n'est JAMAIS lu et tombait sur le
+    prompt par defaut de l'app, « Review the incoming event and summarize ».
     No-op si OPENMAUSBOT_WEBHOOK_URL n'est pas configurée. Ne lève jamais :
     le canal Telegram reste prioritaire et indépendant."""
     if not OPENMAUSBOT_WEBHOOK_URL:
@@ -807,7 +831,8 @@ def push_to_openmausbot(tweet: dict, brief: dict | None, label: str = "Bookmark"
             lines += [f"- {s}" for s in suggestions]
 
         msg = "\n".join(lines)[:15000]
-        r = requests.post(OPENMAUSBOT_WEBHOOK_URL, json={"text": msg}, timeout=20)
+        task = WEBHOOK_TASK.format(payload=msg)
+        r = requests.post(OPENMAUSBOT_WEBHOOK_URL, json={"task": task, "text": msg}, timeout=20)
         if not r.ok:
             print(f"[openmausbot] erreur {r.status_code}: {r.text[:200]}")
             return False
