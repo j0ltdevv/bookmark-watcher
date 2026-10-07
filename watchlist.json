@@ -3,13 +3,13 @@
   "added": "2026-09-09T19:27:40+00:00",
   "last_tag": "v0.2.0",
   "display": "sbom-tool/sbom-tools",
-  "last_checked": "2026-10-03T10:35:48+00:00"
+  "last_checked": "2026-10-07T08:10:37+00:00"
  },
  "cyberwitchery/sbom-diff": {
   "added": "2026-09-09T19:27:40+00:00",
   "last_tag": "v0.9.0",
   "display": "cyberwitchery/sbom-diff",
-  "last_checked": "2026-10-03T10:35:49+00:00"
+  "last_checked": "2026-10-07T08:10:40+00:00"
  },
  "0x4m4/hexstrike-ai": {
   "added": "2026-09-09T19:27:40+00:00",
@@ -20,19 +20,19 @@
   "added": "2026-09-09T19:27:40+00:00",
   "last_tag": "v0.1.5",
   "display": "longweekendprojects/pi-browser-use",
-  "last_checked": "2026-10-03T10:35:51+00:00"
+  "last_checked": "2026-10-07T08:10:41+00:00"
  },
  "browser-use/browsercode": {
   "added": "2026-09-09T19:27:40+00:00",
   "last_tag": "v0.1.20",
   "display": "browser-use/browsercode",
-  "last_checked": "2026-10-03T10:35:52+00:00"
+  "last_checked": "2026-10-07T08:10:43+00:00"
  },
  "celestoai/agentor": {
   "added": "2026-09-09T19:27:40+00:00",
   "last_tag": "v0.1.0",
   "display": "celestoai/agentor",
-  "last_checked": "2026-10-03T10:35:53+00:00"
+  "last_checked": "2026-10-07T08:10:44+00:00"
  },
  "sunblaze-ucb/vero": {
   "added": "2026-09-09T19:27:40+00:00",
@@ -43,13 +43,13 @@
   "added": "2026-09-09T19:27:40+00:00",
   "last_tag": "v0.6.0",
   "display": "scaleapi/vero",
-  "last_checked": "2026-10-03T10:35:55+00:00"
+  "last_checked": "2026-10-07T08:10:46+00:00"
  },
  "basecamp/omarchy": {
   "added": "2026-09-11T07:01:08+00:00",
   "last_tag": "v4.0.4",
   "display": "basecamp/omarchy",
-  "last_checked": "2026-10-03T10:35:56+00:00"
+  "last_checked": "2026-10-07T08:10:48+00:00"
  },
  "witt3rd/oh-my-hermes": {
   "added": "2026-09-11T07:01:08+00:00",
@@ -65,7 +65,7 @@
   "added": "2026-09-11T07:01:08+00:00",
   "last_tag": "v3.0.0",
   "display": "rlaope/oh-my-hermes",
-  "last_checked": "2026-10-03T10:35:58+00:00"
+  "last_checked": "2026-10-07T08:10:50+00:00"
  },
  "microsoft/argusagent": {
   "added": "2026-09-11T07:01:08+00:00",
@@ -76,13 +76,13 @@
   "added": "2026-09-11T07:01:08+00:00",
   "last_tag": "v0.1.8",
   "display": "lbx154/Argus",
-  "last_checked": "2026-10-03T10:35:59+00:00"
+  "last_checked": "2026-10-07T08:10:52+00:00"
  },
  "nousresearch/hermes-agent": {
   "added": "2026-09-11T07:01:08+00:00",
   "last_tag": "v2026.9.24",
   "display": "NousResearch/hermes-agent",
-  "last_checked": "2026-10-03T10:36:01+00:00"
+  "last_checked": "2026-10-07T08:10:54+00:00"
  },
  "sariraai/second-brain-starter-kit": {
   "added": "2026-09-11T07:01:08+00:00",
@@ -96,9 +96,9 @@
  },
  "tonydzi/second-brain-starter-kit": {
   "added": "2026-09-11T07:01:08+00:00",
-  "last_tag": "v0.6.2",
+  "last_tag": "v0.7.0",
   "display": "tonydzi/second-brain-starter-kit",
-  "last_checked": "2026-10-03T10:36:03+00:00"
+  "last_checked": "2026-10-07T08:10:56+00:00"
  },
  "epicsagas/secondbrain-template": {
   "added": "2026-09-11T07:01:08+00:00",
@@ -114,19 +114,19 @@
   "added": "2026-09-12T07:49:52+00:00",
   "last_tag": "v2026.09.12",
   "display": "thomasbek3/hermes-bot-kit",
-  "last_checked": "2026-10-03T10:36:05+00:00"
+  "last_checked": "2026-10-07T08:10:58+00:00"
  },
  "kaishi00/hermes-conduit": {
   "added": "2026-09-12T07:49:52+00:00",
-  "last_tag": "ios/v0.1.16-build-171",
+  "last_tag": "ios/v0.1.17-build-184",
   "display": "kaishi00/hermes-conduit",
-  "last_checked": "2026-10-03T10:36:07+00:00"
+  "last_checked": "2026-10-07T08:11:00+00:00"
  },
  "badchars/darknet-mcp-server": {
   "added": "2026-09-12T07:49:52+00:00",
   "last_tag": "v0.1.1",
   "display": "badchars/darknet-mcp-server",
-  "last_checked": "2026-10-03T10:36:08+00:00"
+  "last_checked": "2026-10-07T08:11:01+00:00"
  },
  "ashiandd/arsenal-ng": {
   "added": "2026-09-13T07:01:14+00:00",

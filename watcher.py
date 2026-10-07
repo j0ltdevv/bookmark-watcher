@@ -26,6 +26,7 @@ import json
 import os
 import re
 import sqlite3
+import subprocess
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -78,6 +79,16 @@ SIFTLY_URL = CFG.get("SIFTLY_URL", "http://localhost:3000")
 PROXY_URL = CFG.get("PROXY_URL", "http://localhost:8089")
 PROXY_API_KEY = CFG.get("PROXY_API_KEY", "optional-server-key-for-proxy-auth")
 EXA_API_KEY = CFG.get("EXA_API_KEY", "")
+# Canal de notification :
+#   local   = AUCUNE notif directe : le watcher ne fait qu'alimenter
+#             bot-context.json, et le profil Hermes `bookmarks` (cron
+#             --monitor-script) depose le commentaire dans le Bot Chat de l'app.
+#             C'est le mode par defaut : une seule source de verite, pas de doublon.
+#   hermes  = bot Telegram d'Hermes via `hermes send`
+#   direct  = ancien bot du watcher (POST direct, boutons inline)
+#   auto    = hermes d'abord, repli sur `direct` si l'envoi echoue
+TELEGRAM_CHANNEL = CFG.get("TELEGRAM_CHANNEL", "local").strip().lower() or "local"
+HERMES_SEND_TIMEOUT = int(CFG.get("HERMES_SEND_TIMEOUT", "90"))
 AI_MODEL = CFG.get("AI_MODEL", "nvidia/nemotron-3-super-120b-a12b")
 POLL_INTERVAL = int(CFG.get("POLL_INTERVAL", "45"))
 MAX_PER_POLL = int(CFG.get("MAX_PER_POLL", "10"))
@@ -661,6 +672,66 @@ VERDICT_LABEL = {
     "BRUIT": "🗑️ BRUIT",
 }
 
+# ---------------------------------------------------------------- sortie Telegram
+
+HERMES_BIN = "/home/jolt/.hermes/hermes-agent/.hermes/bin/hermes"
+
+def _html_to_markdown(html: str) -> str:
+    """Le bot Hermes rend du Markdown, pas du HTML : on convertit le message
+    déjà mis en forme par le watcher (les deux parsers acceptent `**` et `_`)."""
+    md = html
+    md = re.sub(r"<b>(.*?)</b>", r"**\1**", md, flags=re.S)
+    md = re.sub(r"<i>(.*?)</i>", r"_\1_", md, flags=re.S)
+    md = re.sub(r"<code>(.*?)</code>", r"`\1`", md, flags=re.S)
+    md = re.sub(r'<a href="([^"]+)">(.*?)</a>', r"[\2](\1)", md, flags=re.S)
+    md = re.sub(r"<[^>]+>", "", md)
+    md = (md.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">"))
+    return md.strip()
+
+def send_hermes(text: str, *, subject: str | None = None) -> bool:
+    """Livre un message dans le bot Telegram d'Hermes via `hermes send`.
+
+    Aucun LLM, aucun agent, aucun gateway requis (reutilise le token du bot dans
+    ~/.hermes/.env). Retourne False au lieu de lever : l'appelant décide du repli."""
+    cmd = [HERMES_BIN, "send", "--to", f"telegram:{TELEGRAM_CHAT_ID}", "--quiet"]
+    if subject:
+        cmd += ["--subject", subject]
+    cmd += ["--file", "-"]
+    try:
+        r = subprocess.run(cmd, input=text.encode(), capture_output=True, timeout=HERMES_SEND_TIMEOUT)
+        ok = r.returncode == 0
+        print(f"[hermes] {'envoyé' if ok else 'échec rc=%s' % r.returncode}"
+              + (f" — {r.stderr.decode(errors='replace').strip()[:200]}" if not ok else ""))
+        return ok
+    except subprocess.TimeoutExpired:
+        print(f"[hermes] timeout après {HERMES_SEND_TIMEOUT}s")
+        return False
+    except Exception as e:
+        print(f"[hermes] échec: {e}")
+        return False
+
+def notify(markdown: str, *, subject: str | None = None, html_fallback: str | None = None) -> bool:
+    """Point de sortie unique : channel='local' | 'hermes' | 'direct', 'auto' = repli.
+
+    En mode `local` on n'envoie RIEN : le profil Hermes `bookmarks` lit
+    bot-context.json et depose le commentaire dans le Bot Chat de l'app. Renvoie
+    True quand meme, parce que le brief est bien produit et memorise — l'absence
+    de notif directe est le comportement voulu, pas un echec.
+    """
+    if TELEGRAM_CHANNEL == "local":
+        return True
+    if TELEGRAM_CHANNEL == "direct":
+        return tg_send(html_fallback or markdown) is None
+    if TELEGRAM_CHANNEL == "hermes":
+        return send_hermes(markdown, subject=subject)
+    # auto
+    if send_hermes(markdown, subject=subject):
+        return True
+    print("[notify] Hermes a échoué — repli sur le bot direct")
+    if html_fallback is None:
+        return False
+    return tg_send(html_fallback) is None
+
 def _bullets(value, icon="•") -> list[str]:
     """Normalise un champ du brief (str ou list) en liste de bullets."""
     if isinstance(value, list):
@@ -723,6 +794,22 @@ def send_telegram(tweet: dict, brief: dict, exa_results: list[dict] | None = Non
 
     msg = "\n".join(lines)[:3900]
 
+    if TELEGRAM_CHANNEL in ("hermes", "auto"):
+        # Le bot Hermes n'expose pas les boutons inline du watcher : on livre le
+        # brief en Markdown. record_brief() tourne dans les deux cas pour que le
+        # contexte conversationnel (questions, déjà-vu) reste alimenté.
+        ok = send_hermes(_html_to_markdown(msg), subject=f"{label} — @{author}")
+        if ok or TELEGRAM_CHANNEL == "hermes":
+            record_brief(tweet, brief, exa_results or [], None)
+            return 0 if ok else None
+        print("[telegram] repli direct — boutons inline conservés")
+    else:
+        # `local` : aucune notif ici. record_brief() alimente bot-context.json,
+        # que le profil Hermes `bookmarks` lit a chaque tick de son cron. C'est
+        # ce qui rend le commentaire dans le Bot Chat de l'app.
+        record_brief(tweet, brief, exa_results or [], None)
+        return 0
+
     # boutons inline : feedback + approfondir/comparer + suggestions
     keyboard = []
     tid = tweet["tweet_id"][-12:]   # callback_data limité à 64 octets
@@ -754,93 +841,14 @@ def send_telegram(tweet: dict, brief: dict, exa_results: list[dict] | None = Non
         print(f"[telegram] échec: {e}")
         return None
 
-WEBHOOK_TASK = """Voici un bookmark X que j'ai analyse. Utilise le skill `bookmark-watcher` \
-pour le ton, le format et les sources de verite.
-
-Ce que j'attends de ta reponse, en francais, 4 a 8 lignes :
-1. Un commentaire direct sur le fond, comme un pote qui vient de lire le truc. \
-Pas un resume du payload.
-2. UN detail que je n'ai pas dans le resume : ce qui est verifie, ce qui ne l'est \
-pas, ou ce que ca change concretement pour moi.
-3. Une fin qui propose quelque chose de concret : une comparaison, un test a lancer, \
-un angle a creuser.
-
-Si le verdict est MOYEN ou BRUIT, dis-le cash. Ne gonfle jamais le verdict pour etre \
-gentil. Jamais de "a surveiller" ni de "ca vaut le coup d'oeil".
-
-Le brief :
----
-{payload}
----"""
-
-
 def push_to_openmausbot(tweet: dict, brief: dict | None, label: str = "Bookmark") -> bool:
-    """Pousse un brief vers OpenMausBot via webhook ingress.
+    """LEGACY — canal OpenMausBot désactivé le 2026-10-07.
 
-    Le champ `task` est ce que l'app lit (`parsed.data.task ?? parsed.data.message`) :
-    c'est l'instruction du tour. Le champ `text` n'est JAMAIS lu et tombait sur le
-    prompt par defaut de l'app, « Review the incoming event and summarize ».
-    No-op si OPENMAUSBOT_WEBHOOK_URL n'est pas configurée. Ne lève jamais :
-    le canal Telegram reste prioritaire et indépendant."""
-    if not OPENMAUSBOT_WEBHOOK_URL:
-        return False
-    if not brief:
-        return False
-    try:
-        author = tweet.get("author_handle") or "x"
-        url = f"https://x.com/{author}/status/{tweet.get('tweet_id')}"
-        verdict = VERDICT_LABEL.get(brief.get("verdict", ""), str(brief.get("verdict", "?")))
-        excerpt = (tweet.get("text") or "")[:280]
-
-        lines = [f"## {label} — @{author}", "", f"[Voir le tweet]({url})", ""]
-        if excerpt:
-            lines += [f"> {excerpt}…", ""]
-        lines.append(f"**{verdict}**")
-        verif = str(brief.get("verification", "")).lower()
-        VERIF_BADGE_MD = {"ok": "✅ Source vérifiée", "decalage": "⚠️ Décalage tweet/source",
-                          "inaccessible": "❓ Source non vérifiée"}
-        vnote = str(brief.get("verification_note", "")).strip()
-        if verif in VERIF_BADGE_MD:
-            lines.append(f"\n{VERIF_BADGE_MD[verif]}" + (f" — {vnote}" if vnote else ""))
-        dj = brief.get("dejavu")
-        if isinstance(dj, dict) and dj.get("ref"):
-            lines.append(f"\n🍲 **Déjà vu** — {dj.get('ref', '')} : {dj.get('note', '')}")
-        resume = _bullets(brief.get("resume"))
-        if resume:
-            lines.append("\n**🎯 C'est quoi**")
-            lines += [f"- {b.lstrip(' •')}" for b in resume]
-        angle = str(brief.get("angle") or "").strip()
-        if angle:
-            lines.append(f"\n_{angle}_")
-        if brief.get("nouveaute"):
-            lines.append(f"\n🆕 **{brief['nouveaute']}** — {brief.get('contexte_nouveaute', '')}")
-        raison = _bullets(brief.get("raison"))
-        if raison:
-            lines.append("\n**💡 Ce qu'elle vaut**")
-            lines += [f"- {b.lstrip(' •')}" for b in raison]
-        limites = _bullets(brief.get("limites"))
-        if limites:
-            lines.append("\n**⚠️ Limites**")
-            lines += [f"- {b.lstrip(' •')}" for b in limites]
-        srcs = [s for s in (brief.get("sources") or []) if isinstance(s, str)][:3]
-        if srcs:
-            lines += ["", "Sources : " + " · ".join(f"[lien]({s})" for s in srcs)]
-        suggestions = [str(s).strip() for s in (brief.get("suggestions") or []) if str(s).strip()][:3]
-        if suggestions:
-            lines.append("\n**👉 Pour creuser**")
-            lines += [f"- {s}" for s in suggestions]
-
-        msg = "\n".join(lines)[:15000]
-        task = WEBHOOK_TASK.format(payload=msg)
-        r = requests.post(OPENMAUSBOT_WEBHOOK_URL, json={"task": task, "text": msg}, timeout=20)
-        if not r.ok:
-            print(f"[openmausbot] erreur {r.status_code}: {r.text[:200]}")
-            return False
-        print(f"[openmausbot] brief poussé ({url})")
-        return True
-    except Exception as e:
-        print(f"[openmausbot] échec: {e}")
-        return False
+    L'app OpenMausBot n'est plus lancée : son ingress local (127.0.0.1:8800)
+    refusait la connexion. La fonction ne lèvait jamais, donc chaque push était un
+    no-op silencieux qui laissait du bruit dans les logs. La notification part
+    désormais par le bot Telegram d'Hermes (voir send_hermes / notify)."""
+    return False
 
 # ---------------------------------------------------------------- contexte conversationnel
 
@@ -1266,10 +1274,26 @@ def health(key: str, ok: bool) -> None:
 # ---------------------------------------------------------------- digest + veille proactive
 
 def tg_send(text: str) -> None:
+    """Notification libre (santé, digest) — passe par le canal configuré.
+
+    En mode `local` on n'envoie rien : ces messages sortiraient par le bot du
+    watcher alors que tout le reste arrive dans l'app Hermes. On les ecrit
+    seulement dans le journal, qui reste la source de verite."""
+    if TELEGRAM_CHANNEL == "local":
+        print(f"[local] {text}")
+        return
     esc = lambda s: s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     html = lambda s: re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", esc(s))
+    body = html(text)
+    if TELEGRAM_CHANNEL in ("hermes", "auto"):
+        if send_hermes(text):
+            return
+        if TELEGRAM_CHANNEL == "hermes":
+            print("[telegram] tg_send Hermes échoué — message perdu")
+            return
+        print("[telegram] tg_send repli direct")
     requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                  json={"chat_id": TELEGRAM_CHAT_ID, "text": html(text)[:4000], "parse_mode": "HTML",
+                  json={"chat_id": TELEGRAM_CHAT_ID, "text": body[:4000], "parse_mode": "HTML",
                         "disable_web_page_preview": True}, timeout=30)
 
 def _records_last_24h() -> list[dict]:
