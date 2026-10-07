@@ -9,3 +9,6 @@ questions.log
 voice_*.ogg
 tg-offset.txt
 .env.bak-*
+
+# cache de dedup du mode chasse (regenere par le daemon)
+chasse-seen.json
