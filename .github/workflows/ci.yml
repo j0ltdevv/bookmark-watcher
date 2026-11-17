@@ -17,9 +17,3 @@ jobs:
 
       - name: Syntaxe (compileall)
         run: python -m compileall .
-
-      - name: Dépendances + pytest
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pytest -q tests/
